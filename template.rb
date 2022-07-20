@@ -52,7 +52,7 @@ after_bundle do
 
   if yes?("Use UUIDs by default?")
     get "#{base_url}/enable_extension_for_uuid.rb",
-      "db/migrate/#{Time.now.utc.strftime("%Y%m%d%k%M%S")}_enable_extension_for_uuid.rb"
+      "db/migrate/#{Time.now.utc.strftime("%Y%m%d%H%M%S")}_enable_extension_for_uuid.rb"
 
     rails_command("db:migrate")
 
@@ -150,7 +150,7 @@ after_bundle do
   git add: "-A"
   git commit: "-m 'Configure RuboCop / StandardRB'"
 
-  run "rubocop -A"
+  run "bundle exec rubocop -A"
 
   git add: "-A"
   git commit: "-m 'rubocop -A'"

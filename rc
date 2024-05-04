@@ -1,3 +1,1 @@
---database=postgresql
---skip-test
---template=https://raw.githubusercontent.com/firstdraft/rails_application_template/main/template.rb
+--database=postgresql --skip-test --template=https://raw.githubusercontent.com/firstdraft/rails_application_template/main/template.rb

@@ -593,7 +593,15 @@ after_bundle do
   
   # Create version files using current system versions
   create_file ".ruby-version", "#{RUBY_VERSION}\n"
-  create_file ".node-version", "20.0.0\n"
+  
+  # Only create .node-version if Node is installed and we're using a JS bundler
+  if system("which node > /dev/null 2>&1")
+    node_version = `node --version`.strip.delete('v')
+    create_file ".node-version", "#{node_version}\n"
+  else
+    # Fallback to LTS version if Node isn't installed but might be needed
+    create_file ".node-version", "20.0.0\n"
+  end
   
   git add: "-A"
   git commit: "-m 'Add project documentation files'"

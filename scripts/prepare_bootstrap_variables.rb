@@ -14,12 +14,12 @@ end
 content = File.read(input_file)
 
 output_lines = []
-output_lines << "// Bootstrap Variable Overrides"
-output_lines << "// Uncomment and modify any variables you want to customize"
+output_lines << "// Bootstrap Overrides"
+output_lines << "// Uncomment and modify any variables below to customize Bootstrap's appearance"
 output_lines << "// Original source: https://github.com/twbs/bootstrap/blob/main/scss/_variables.scss"
 output_lines << ""
-output_lines << "// Import this file BEFORE importing Bootstrap in application.bootstrap.scss:"
-output_lines << "// @import 'bootstrap-variables';"
+output_lines << "// This file is imported BEFORE Bootstrap in application.bootstrap.scss:"
+output_lines << "// @import 'bootstrap-overrides';"
 output_lines << "// @import 'bootstrap/scss/bootstrap';"
 output_lines << ""
 output_lines << "// ============================================"

@@ -36,7 +36,7 @@ say "  ✅ Rails ERD - Entity diagrams"
 say "  ❌ rails_db - Database web UI (security concern)"
 say "  ✅ Strong Migrations - Migration safety"
 say "  ✅ bundler-audit - Vulnerability scanning"
-say "  ✅ Bootstrap variables - Custom Sass variables file"
+say "  ✅ Bootstrap overrides - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
 
 say "\n"
@@ -76,7 +76,7 @@ if customize
   # Frontend tools
   frontend_options = {}
   say "\nFrontend Tools:", :yellow
-  frontend_options[:bootstrap_variables] = yes?("  Include Bootstrap variables file for easy customization? (y/n)")
+  frontend_options[:bootstrap_overrides] = yes?("  Include Bootstrap overrides file for easy customization? (y/n)")
   frontend_options[:full_linting] = yes?("  Include full JS/CSS linting stack (Prettier, ESLint, Stylelint)? (y/n)")
 else
   # Use default configuration
@@ -103,7 +103,7 @@ else
   }
   
   frontend_options = {
-    bootstrap_variables: true,
+    bootstrap_overrides: true,
     full_linting: false
   }
   
@@ -420,26 +420,26 @@ after_bundle do
     git commit: "-m 'Configure JavaScript/CSS linting'"
   end
   
-  # === BOOTSTRAP VARIABLES (if selected) ===
+  # === BOOTSTRAP OVERRIDES (if selected) ===
   
-  if frontend_options[:bootstrap_variables]
-    # Read the commented Bootstrap variables file from templates/partials
+  if frontend_options[:bootstrap_overrides]
+    # Read the commented Bootstrap overrides file from templates/partials
     template_dir = File.dirname(__FILE__)
-    variables_path = File.join(template_dir, "templates", "partials", "bootstrap_variables_commented.scss")
+    variables_path = File.join(template_dir, "templates", "partials", "bootstrap_overrides_commented.scss")
     
     if File.exist?(variables_path)
       variables_content = File.read(variables_path)
-      create_file "app/assets/stylesheets/_bootstrap-variables.scss", variables_content
+      create_file "app/assets/stylesheets/_bootstrap-overrides.scss", variables_content
       
-      # Update application.bootstrap.scss to import the variables
+      # Update application.bootstrap.scss to import the overrides
       gsub_file "app/assets/stylesheets/application.bootstrap.scss",
         "@import 'bootstrap/scss/bootstrap';",
-        "@import 'bootstrap-variables';\n@import 'bootstrap/scss/bootstrap';"
+        "@import 'bootstrap-overrides';\n@import 'bootstrap/scss/bootstrap';"
       
       git add: "-A"
-      git commit: "-m 'Add Bootstrap variables file for customization'"
+      git commit: "-m 'Add Bootstrap overrides file for customization'"
     else
-      say "Warning: Bootstrap variables template not found. Skipping...", :yellow
+      say "Warning: Bootstrap overrides template not found. Skipping...", :yellow
     end
   end
   
@@ -811,7 +811,7 @@ after_bundle do
     say "  #{security_options[:bundler_audit] ? '✅' : '❌'} bundler-audit"
     
     say "\nFrontend Tools:", :cyan
-    say "  #{frontend_options[:bootstrap_variables] ? '✅' : '❌'} Bootstrap variables file"
+    say "  #{frontend_options[:bootstrap_overrides] ? '✅' : '❌'} Bootstrap overrides file"
     say "  #{frontend_options[:full_linting] ? '✅' : '❌'} Full JS/CSS/ERB linting stack"
     
     say "\nCode Quality:", :cyan

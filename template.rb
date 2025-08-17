@@ -31,7 +31,7 @@ say "  ✅ SimpleCov - Code coverage"
 say "  ✅ Shoulda Matchers - One-liner tests"
 say "  ✅ Faker - Test data generation"
 say "  ❌ WebMock - HTTP stubbing (often not needed)"
-say "  ❌ Goldiloader - Auto N+1 prevention (advanced)"
+say "  ✅ Goldiloader - Auto N+1 prevention"
 say "  ✅ rack-mini-profiler - Development performance bar"
 say "  ✅ Skylight - Production performance monitoring"
 say "  ✅ Ahoy + Blazer - Analytics tracking and dashboard"
@@ -115,7 +115,7 @@ else
   }
   
   performance_options = {
-    goldiloader: false,
+    goldiloader: true,
     rack_profiler: true,
     skylight: true
   }
@@ -148,6 +148,11 @@ end
 
 # === GEMS CONFIGURATION ===
 
+# Automatic N+1 prevention (all environments)
+if performance_options[:goldiloader]
+  gem "goldiloader"
+end
+
 gem_group :development, :test do
   # Essential Debugging (always included)
   gem "pry-rails"
@@ -171,6 +176,9 @@ gem_group :development, :test do
   gem "standard-rails", require: false
   gem "herb", require: false
   
+  # N+1 Query Detection (always included in dev/test)
+  gem "bullet"
+  
   # Security
   # Note: Rails 8+ includes brakeman by default, so we don't add it
   gem "bundler-audit", require: false if security_options[:bundler_audit]
@@ -192,11 +200,7 @@ gem_group :development, :test do
 end
 
 gem_group :development do
-  # N+1 Detection (always included)
-  gem "bullet"
-  
   # Optional Performance Tools
-  gem "goldiloader" if performance_options[:goldiloader]
   gem "rack-mini-profiler" if performance_options[:rack_profiler]
   
   # Documentation (annotaterb always included)
@@ -261,6 +265,34 @@ after_bundle do
   
   git add: "-A"
   git commit: "-m 'Configure generators'"
+  
+  # === GOLDILOADER CONFIGURATION (if enabled) ===
+  
+  if performance_options[:goldiloader]
+    create_file "config/initializers/goldiloader.rb", <<~RUBY
+      # Goldiloader configuration
+      # Automatic eager loading to prevent N+1 queries
+      
+      # Goldiloader is enabled globally by default
+      # You can disable it for specific code blocks:
+      #
+      # Goldiloader.disabled do
+      #   # Code here runs without automatic eager loading
+      # end
+      #
+      # Or disable it for specific associations:
+      #
+      # class Post < ApplicationRecord
+      #   has_many :comments, -> { auto_include(false) }
+      # end
+      #
+      # Note: Bullet's unused eager loading detection is disabled
+      # to avoid conflicts with Goldiloader's automatic loading
+    RUBY
+    
+    git add: "-A"
+    git commit: "-m 'Configure Goldiloader for automatic N+1 prevention'"
+  end
   
   # === UUID CONFIGURATION (Optional) ===
   
@@ -915,18 +947,33 @@ after_bundle do
   bullet_config = <<-RUBY
     # Bullet configuration for N+1 query detection
     Bullet.enable = true
-    Bullet.console = true
-    Bullet.rails_logger = true
-    Bullet.add_footer = true
+    Bullet.rails_logger = true  # Log to server log
+    Bullet.add_footer = true    # Display in HTML footer
+    Bullet.console = true       # Log to browser console
+    
+    # Disable unused eager loading detection to avoid conflicts with Goldiloader
+    # Goldiloader automatically eager loads associations, which Bullet may see as "unused"
+    Bullet.unused_eager_loading_enable = false
+    
+    # Keep N+1 detection active - this is the main benefit
+    Bullet.n_plus_one_query_enable = true
+    
+    # Optional: Counter cache suggestions
+    Bullet.counter_cache_enable = true
     
   RUBY
   
+  # Add Bullet configuration to both development and test environments
   insert_into_file "config/environments/development.rb",
     bullet_config,
     after: "Rails.application.configure do\n"
   
+  insert_into_file "config/environments/test.rb",
+    bullet_config,
+    after: "Rails.application.configure do\n"
+  
   git add: "-A"
-  git commit: "-m 'Configure Bullet for N+1 detection'"
+  git commit: "-m 'Configure Bullet for N+1 detection in dev and test'"
   
   # === STRONG MIGRATIONS CONFIGURATION (if selected) ===
   
@@ -1062,6 +1109,26 @@ after_bundle do
     #{security_commands.join("\n    ")}
     ```
     
+    ## Performance & N+1 Prevention
+    
+    This app uses a two-pronged approach to prevent N+1 queries:
+    
+    ### Goldiloader (Prevention)
+    #{"Automatically eager loads associations when accessed to prevent N+1 queries from occurring." if performance_options[:goldiloader]}
+    #{"- Works in all environments (development, test, production)" if performance_options[:goldiloader]}
+    #{"- Disable for specific associations: `has_many :posts, -> { auto_include(false) }`" if performance_options[:goldiloader]}
+    #{"- Disable for code blocks: `Goldiloader.disabled { ... }`" if performance_options[:goldiloader]}
+    #{"Not included - enable in template options to automatically prevent N+1 queries." unless performance_options[:goldiloader]}
+    
+    ### Bullet (Detection)
+    - Detects N+1 queries and suggests fixes in development and test
+    - Logs to server console and displays in HTML footer
+    - Unused eager loading detection is disabled to work well with Goldiloader
+    - View N+1 warnings in:
+      - Browser footer (development only)
+      - Rails server log
+      - Browser console
+    
     ## Background Jobs
     
     This app uses Solid Queue (Rails 8 default) for background job processing.
@@ -1144,10 +1211,10 @@ after_bundle do
     say "  #{testing_options[:webmock] ? '✅' : '❌'} WebMock"
     
     say "\nPerformance Tools:", :cyan
-    say "  ✅ Bullet (always included)"
-    say "  #{performance_options[:goldiloader] ? '✅' : '❌'} Goldiloader"
-    say "  #{performance_options[:rack_profiler] ? '✅' : '❌'} rack-mini-profiler"
-    say "  #{performance_options[:skylight] ? '✅' : '❌'} Skylight"
+    say "  ✅ Bullet - N+1 detection (always included in dev/test)"
+    say "  #{performance_options[:goldiloader] ? '✅' : '❌'} Goldiloader - Automatic N+1 prevention (all environments)"
+    say "  #{performance_options[:rack_profiler] ? '✅' : '❌'} rack-mini-profiler - Development performance bar"
+    say "  #{performance_options[:skylight] ? '✅' : '❌'} Skylight - Production monitoring"
     
     say "\nAnalytics:", :cyan
     say "  #{analytics_options[:ahoy_blazer] ? '✅' : '❌'} Ahoy + Blazer"

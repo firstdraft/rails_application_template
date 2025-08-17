@@ -36,6 +36,7 @@ say "  ✅ Rails ERD - Entity diagrams"
 say "  ❌ rails_db - Database web UI (security concern)"
 say "  ✅ Strong Migrations - Migration safety"
 say "  ✅ bundler-audit - Vulnerability scanning"
+say "  ✅ Bootstrap variables - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
 
 say "\n"
@@ -72,9 +73,10 @@ if customize
   security_options[:strong_migrations] = yes?("  Include Strong Migrations for safer database changes? (y/n)")
   security_options[:bundler_audit] = yes?("  Include bundler-audit for vulnerability scanning? (y/n)")
   
-  # Frontend linting
+  # Frontend tools
   frontend_options = {}
   say "\nFrontend Tools:", :yellow
+  frontend_options[:bootstrap_variables] = yes?("  Include Bootstrap variables file for easy customization? (y/n)")
   frontend_options[:full_linting] = yes?("  Include full JS/CSS linting stack (Prettier, ESLint, Stylelint)? (y/n)")
 else
   # Use default configuration
@@ -101,6 +103,7 @@ else
   }
   
   frontend_options = {
+    bootstrap_variables: true,
     full_linting: false
   }
   
@@ -415,6 +418,29 @@ after_bundle do
     
     git add: "-A"
     git commit: "-m 'Configure JavaScript/CSS linting'"
+  end
+  
+  # === BOOTSTRAP VARIABLES (if selected) ===
+  
+  if frontend_options[:bootstrap_variables]
+    # Read the commented Bootstrap variables file from templates/partials
+    template_dir = File.dirname(__FILE__)
+    variables_path = File.join(template_dir, "templates", "partials", "bootstrap_variables_commented.scss")
+    
+    if File.exist?(variables_path)
+      variables_content = File.read(variables_path)
+      create_file "app/assets/stylesheets/_bootstrap-variables.scss", variables_content
+      
+      # Update application.bootstrap.scss to import the variables
+      gsub_file "app/assets/stylesheets/application.bootstrap.scss",
+        "@import 'bootstrap/scss/bootstrap';",
+        "@import 'bootstrap-variables';\n@import 'bootstrap/scss/bootstrap';"
+      
+      git add: "-A"
+      git commit: "-m 'Add Bootstrap variables file for customization'"
+    else
+      say "Warning: Bootstrap variables template not found. Skipping...", :yellow
+    end
   end
   
   # === DOTENV CONFIGURATION ===
@@ -784,9 +810,12 @@ after_bundle do
     say "  #{security_options[:strong_migrations] ? '✅' : '❌'} Strong Migrations"
     say "  #{security_options[:bundler_audit] ? '✅' : '❌'} bundler-audit"
     
+    say "\nFrontend Tools:", :cyan
+    say "  #{frontend_options[:bootstrap_variables] ? '✅' : '❌'} Bootstrap variables file"
+    say "  #{frontend_options[:full_linting] ? '✅' : '❌'} Full JS/CSS/ERB linting stack"
+    
     say "\nCode Quality:", :cyan
     say "  ✅ StandardRB (always included)"
-    say "  #{frontend_options[:full_linting] ? '✅' : '❌'} Full JS/CSS/ERB linting stack"
   else
     say "\n✅ Applied default configuration with sensible choices!", :green
   end

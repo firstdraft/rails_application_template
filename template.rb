@@ -721,6 +721,13 @@ after_bundle do
   
   # === DOTENV CONFIGURATION ===
   
+  # Generate secure passwords upfront if needed
+  blazer_password = nil
+  if analytics_options[:ahoy_blazer]
+    require 'securerandom'
+    blazer_password = SecureRandom.alphanumeric(16)
+  end
+  
   # Build .env.example content with error monitoring if configured
   env_example_content = <<~ENV
     # Database
@@ -779,9 +786,10 @@ after_bundle do
       # Use your app's database URL (read-only user recommended for production)
       BLAZER_DATABASE_URL=#{ENV.fetch('DATABASE_URL', "postgresql://localhost/#{app_name}_development")}
       
-      # Basic authentication for Blazer dashboard (CHANGE THESE IN PRODUCTION!)
+      # Basic authentication for Blazer dashboard
+      # Auto-generated secure password - save this somewhere safe!
       BLAZER_USERNAME=admin
-      BLAZER_PASSWORD=appdev
+      BLAZER_PASSWORD=#{blazer_password}
     ENV
   end
   
@@ -974,7 +982,7 @@ after_bundle do
   
   performance_monitoring_section = performance_options[:skylight] ? "\n    ## Performance Monitoring\n    \n    This app uses Skylight for performance monitoring. Set your authentication token:\n    ```bash\n    SKYLIGHT_AUTHENTICATION=your_token_here\n    ```\n    \n    Visit [skylight.io](https://skylight.io) to sign up and get your authentication token." : ""
   
-  analytics_section = analytics_options[:ahoy_blazer] ? "\n    ## Analytics\n    \n    This app uses Ahoy for tracking and Blazer for analytics dashboards.\n    \n    - View analytics dashboard: `/analytics`\n    - **Default credentials:** Username: `admin`, Password: `appdev`\n    - **⚠️ IMPORTANT:** Change these credentials before deploying to production!\n    - Track custom events in JavaScript:\n      ```javascript\n      ahoy.track(\"Event Name\", {property: \"value\"});\n      ```\n    - Track events in Ruby:\n      ```ruby\n      ahoy.track \"Event Name\", property: \"value\"\n      ```\n    \n    Sample queries are available in `db/blazer_queries.yml`.\n    \n    ### Securing Blazer in Production\n    \n    The dashboard uses basic authentication by default. For production, you should:\n    1. Change the default credentials in your environment variables\n    2. Consider using your app's authentication (e.g., Devise) instead\n    3. Optionally create a read-only database user for Blazer" : ""
+  analytics_section = analytics_options[:ahoy_blazer] ? "\n    ## Analytics\n    \n    This app uses Ahoy for tracking and Blazer for analytics dashboards.\n    \n    - View analytics dashboard: `/analytics`\n    - **Authentication:** Check `.env` file for auto-generated credentials\n    - **Username:** `admin`\n    - **Password:** Unique 16-character password in `.env` file\n    - Track custom events in JavaScript:\n      ```javascript\n      ahoy.track(\"Event Name\", {property: \"value\"});\n      ```\n    - Track events in Ruby:\n      ```ruby\n      ahoy.track \"Event Name\", property: \"value\"\n      ```\n    \n    Sample queries are available in `db/blazer_queries.yml`.\n    \n    ### Securing Blazer in Production\n    \n    The dashboard uses basic authentication with a unique auto-generated password.\n    For production, you can:\n    1. Keep the strong auto-generated password\n    2. Use your app's authentication (e.g., Devise) instead\n    3. Create a read-only database user for Blazer\n    4. Restrict access by IP or VPN" : ""
   
   doc_commands = []
   doc_commands << "- Generate ERD: `bundle exec erd`" if doc_options[:rails_erd]
@@ -1178,5 +1186,15 @@ after_bundle do
   say "  1. cd #{app_name}"
   say "  2. Review and edit .env file"
   say "  3. Run: bin/dev"
+  
+  # Display Blazer credentials if analytics was configured
+  if analytics_options[:ahoy_blazer] && blazer_password
+    say "\n⚠️  IMPORTANT - Blazer Analytics Credentials:", :red
+    say "  Dashboard URL: /analytics", :cyan
+    say "  Username: admin", :cyan
+    say "  Password: #{blazer_password}", :cyan
+    say "  (These credentials are also saved in your .env file)", :yellow
+  end
+  
   say "\n"
 end

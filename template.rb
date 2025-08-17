@@ -37,6 +37,7 @@ say "  ✅ Rails ERD - Entity diagrams"
 say "  ❌ rails_db - Database web UI (security concern)"
 say "  ✅ Strong Migrations - Migration safety"
 say "  ✅ bundler-audit - Vulnerability scanning"
+say "  ✅ Rollbar - Error tracking (default choice)"
 say "  ✅ Bootstrap overrides - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
 
@@ -74,6 +75,23 @@ if customize
   security_options[:strong_migrations] = yes?("  Include Strong Migrations for safer database changes? (y/n)")
   security_options[:bundler_audit] = yes?("  Include bundler-audit for vulnerability scanning? (y/n)")
   
+  # Error monitoring
+  monitoring_options = {}
+  say "\nError Monitoring:", :yellow
+  say "  Choose error monitoring service:"
+  say "  1. Rollbar (default)"
+  say "  2. Honeybadger"
+  say "  3. None"
+  monitoring_choice = ask("  Enter choice (1-3):", :limited_to => %w[1 2 3], :default => "1")
+  monitoring_options[:error_service] = case monitoring_choice
+  when "1"
+    "rollbar"
+  when "2"
+    "honeybadger"
+  when "3"
+    "none"
+  end
+  
   # Frontend tools
   frontend_options = {}
   say "\nFrontend Tools:", :yellow
@@ -101,6 +119,10 @@ else
   security_options = {
     strong_migrations: true,
     bundler_audit: true
+  }
+  
+  monitoring_options = {
+    error_service: "rollbar"
   }
   
   frontend_options = {
@@ -139,6 +161,14 @@ gem_group :development, :test do
   # Security
   # Note: Rails 8+ includes brakeman by default, so we don't add it
   gem "bundler-audit", require: false if security_options[:bundler_audit]
+  
+  # Error Monitoring
+  case monitoring_options[:error_service]
+  when "rollbar"
+    gem "rollbar"
+  when "honeybadger"
+    gem "honeybadger"
+  end
   
   # ERB Linting (only with full linting)
   if frontend_options[:full_linting]
@@ -358,6 +388,34 @@ after_bundle do
   git add: "-A"
   git commit: "-m 'Configure Herb for HTML+ERB analysis'"
   
+  # === ERROR MONITORING CONFIGURATION ===
+  
+  case monitoring_options[:error_service]
+  when "rollbar"
+    # Generate Rollbar configuration
+    generate("rollbar")
+    
+    # Rollbar generator already sets up ENV['ROLLBAR_ACCESS_TOKEN']
+    # We'll add the token to .env.example later when we create it
+    
+    git add: "-A"
+    git commit: "-m 'Configure Rollbar for error tracking'"
+    
+  when "honeybadger"
+    # Generate Honeybadger configuration
+    generate("honeybadger")
+    
+    # Update Honeybadger initializer to use ENV variable if needed
+    if File.exist?("config/honeybadger.yml")
+      gsub_file "config/honeybadger.yml",
+        /api_key: .+/,
+        "api_key: <%= ENV['HONEYBADGER_API_KEY'] %>"
+    end
+    
+    git add: "-A"
+    git commit: "-m 'Configure Honeybadger for error tracking'"
+  end
+  
   # === JAVASCRIPT/CSS LINTING (if selected) ===
   
   if frontend_options[:full_linting]
@@ -517,7 +575,8 @@ after_bundle do
   
   # === DOTENV CONFIGURATION ===
   
-  create_file ".env.example", <<~ENV
+  # Build .env.example content with error monitoring if configured
+  env_example_content = <<~ENV
     # Database
     DATABASE_URL=postgresql://localhost/#{app_name}_development
     
@@ -540,6 +599,24 @@ after_bundle do
     # SECRET_KEY_BASE=
     # RAILS_MASTER_KEY=
   ENV
+  
+  # Add error monitoring configuration
+  case monitoring_options[:error_service]
+  when "rollbar"
+    env_example_content += <<~ENV
+      
+      # Rollbar Error Tracking
+      ROLLBAR_ACCESS_TOKEN=your_rollbar_post_server_item_token_here
+    ENV
+  when "honeybadger"
+    env_example_content += <<~ENV
+      
+      # Honeybadger Error Tracking
+      HONEYBADGER_API_KEY=your_honeybadger_api_key_here
+    ENV
+  end
+  
+  create_file ".env.example", env_example_content
   
   create_file ".env"
   
@@ -717,6 +794,15 @@ after_bundle do
   
   linting_section = frontend_options[:full_linting] ? "\n    JavaScript/CSS linting:\n    ```bash\n    yarn lint\n    yarn fix:prettier\n    ```\n    \n    ERB linting:\n    ```bash\n    bundle exec erb_lint --lint-all\n    bundle exec erb_lint --lint-all --autocorrect\n    ```" : ""
   
+  error_monitoring_section = case monitoring_options[:error_service]
+  when "rollbar"
+    "\n    ## Error Monitoring\n    \n    This app uses Rollbar for error tracking. Set your access token:\n    ```bash\n    ROLLBAR_ACCESS_TOKEN=your_token_here\n    ```\n    \n    Visit [rollbar.com](https://rollbar.com) to sign up and get your access token."
+  when "honeybadger"
+    "\n    ## Error Monitoring\n    \n    This app uses Honeybadger for error tracking. Set your API key:\n    ```bash\n    HONEYBADGER_API_KEY=your_key_here\n    ```\n    \n    Visit [honeybadger.io](https://honeybadger.io) to sign up and get your API key."
+  else
+    ""
+  end
+  
   doc_commands = []
   doc_commands << "- Generate ERD: `bundle exec erd`" if doc_options[:rails_erd]
   doc_commands << "- Annotate models: `bundle exec annotaterb models`"
@@ -801,7 +887,7 @@ after_bundle do
     
     ## Documentation
     
-    #{doc_commands.join("\n    ")}
+    #{doc_commands.join("\n    ")}#{error_monitoring_section}
   MARKDOWN
   
   # CONTRIBUTING.md
@@ -889,6 +975,16 @@ after_bundle do
     say "\nSecurity & Safety:", :cyan
     say "  #{security_options[:strong_migrations] ? '✅' : '❌'} Strong Migrations"
     say "  #{security_options[:bundler_audit] ? '✅' : '❌'} bundler-audit"
+    
+    say "\nError Monitoring:", :cyan
+    case monitoring_options[:error_service]
+    when "rollbar"
+      say "  ✅ Rollbar"
+    when "honeybadger"
+      say "  ✅ Honeybadger"
+    else
+      say "  ❌ None"
+    end
     
     say "\nFrontend Tools:", :cyan
     say "  #{frontend_options[:bootstrap_overrides] ? '✅' : '❌'} Bootstrap overrides file"

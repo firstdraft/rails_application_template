@@ -439,11 +439,14 @@ after_bundle do
   git commit: "-m 'Configure Strong Migrations'"
 
   # StandardRB Configuration
+  # Use the current Ruby version dynamically (major.minor only)
+  current_ruby_version = RUBY_VERSION.split('.')[0..1].join('.')
+  
   create_file ".standard.yml", <<~YAML
     # StandardRB configuration
     # https://github.com/standardrb/standard
     
-    ruby_version: 3.4
+    ruby_version: #{current_ruby_version}
     
     plugins:
       - standard-rails
@@ -588,6 +591,8 @@ after_bundle do
     - Reference issues and pull requests
   MARKDOWN
   
+  # Create version files using current system versions
+  create_file ".ruby-version", "#{RUBY_VERSION}\n"
   create_file ".node-version", "20.0.0\n"
   
   git add: "-A"

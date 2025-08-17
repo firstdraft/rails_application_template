@@ -423,23 +423,64 @@ after_bundle do
   # === BOOTSTRAP OVERRIDES (if selected) ===
   
   if frontend_options[:bootstrap_overrides]
-    # Read the commented Bootstrap overrides file from templates/partials
-    template_dir = File.dirname(__FILE__)
-    variables_path = File.join(template_dir, "templates", "partials", "bootstrap_overrides_commented.scss")
+    require 'net/http'
+    require 'uri'
     
-    if File.exist?(variables_path)
-      variables_content = File.read(variables_path)
-      create_file "app/assets/stylesheets/_bootstrap-overrides.scss", variables_content
+    # Download the latest Bootstrap variables from GitHub
+    bootstrap_vars_url = "https://raw.githubusercontent.com/twbs/bootstrap/main/scss/_variables.scss"
+    
+    begin
+      say "Downloading Bootstrap variables from GitHub...", :cyan
+      uri = URI.parse(bootstrap_vars_url)
+      response = Net::HTTP.get_response(uri)
       
-      # Update application.bootstrap.scss to import the overrides
-      gsub_file "app/assets/stylesheets/application.bootstrap.scss",
-        "@import 'bootstrap/scss/bootstrap';",
-        "@import 'bootstrap-overrides';\n@import 'bootstrap/scss/bootstrap';"
-      
-      git add: "-A"
-      git commit: "-m 'Add Bootstrap overrides file for customization'"
-    else
-      say "Warning: Bootstrap overrides template not found. Skipping...", :yellow
+      if response.code == "200"
+        # Process the content to comment out variable declarations
+        output_lines = []
+        output_lines << "// Bootstrap Overrides"
+        output_lines << "// Uncomment and modify any variables below to customize Bootstrap's appearance"
+        output_lines << "// Source: #{bootstrap_vars_url}"
+        output_lines << ""
+        output_lines << "// This file is imported BEFORE Bootstrap in application.bootstrap.scss:"
+        output_lines << "// @import 'bootstrap-overrides';"
+        output_lines << "// @import 'bootstrap/scss/bootstrap';"
+        output_lines << ""
+        output_lines << "// ============================================"
+        output_lines << ""
+        
+        response.body.each_line do |line|
+          # Keep empty lines
+          if line.strip.empty?
+            output_lines << ""
+          # Keep existing comments as-is
+          elsif line.strip.start_with?('//')
+            output_lines << line.rstrip
+          # Comment out variable declarations
+          elsif line.include?('$') && line.include?(':')
+            # Remove !default and comment out the line
+            clean_line = line.rstrip.gsub(' !default', '')
+            output_lines << "// #{clean_line}"
+          # Keep other lines (like scss-docs markers) as comments
+          else
+            output_lines << "// #{line.rstrip}" unless line.strip.empty?
+          end
+        end
+        
+        variables_content = output_lines.join("\n") + "\n"
+        create_file "app/assets/stylesheets/_bootstrap-overrides.scss", variables_content
+        
+        # Update application.bootstrap.scss to import the overrides
+        gsub_file "app/assets/stylesheets/application.bootstrap.scss",
+          "@import 'bootstrap/scss/bootstrap';",
+          "@import 'bootstrap-overrides';\n@import 'bootstrap/scss/bootstrap';"
+        
+        git add: "-A"
+        git commit: "-m 'Add Bootstrap overrides file for customization'"
+      else
+        say "Warning: Could not download Bootstrap variables (HTTP #{response.code}). Skipping...", :yellow
+      end
+    rescue => e
+      say "Warning: Error downloading Bootstrap variables: #{e.message}. Skipping...", :yellow
     end
   end
   

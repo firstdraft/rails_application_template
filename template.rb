@@ -34,6 +34,7 @@ say "  ❌ WebMock - HTTP stubbing (often not needed)"
 say "  ❌ Goldiloader - Auto N+1 prevention (advanced)"
 say "  ✅ rack-mini-profiler - Development performance bar"
 say "  ✅ Skylight - Production performance monitoring"
+say "  ✅ Ahoy + Blazer - Analytics tracking and dashboard"
 say "  ✅ Rails ERD - Entity diagrams"
 say "  ❌ rails_db - Database web UI (security concern)"
 say "  ✅ Strong Migrations - Migration safety"
@@ -64,6 +65,11 @@ if customize
   performance_options[:goldiloader] = yes?("  Include Goldiloader for automatic N+1 prevention? (y/n)")
   performance_options[:rack_profiler] = yes?("  Include rack-mini-profiler for development performance bar? (y/n)")
   performance_options[:skylight] = yes?("  Include Skylight for production performance monitoring? (y/n)")
+  
+  # Analytics
+  analytics_options = {}
+  say "\nAnalytics:", :yellow
+  analytics_options[:ahoy_blazer] = yes?("  Include Ahoy + Blazer for analytics tracking and dashboard? (y/n)")
   
   # Documentation tools
   doc_options = {}
@@ -112,6 +118,10 @@ else
     goldiloader: false,
     rack_profiler: true,
     skylight: true
+  }
+  
+  analytics_options = {
+    ahoy_blazer: true
   }
   
   doc_options = {
@@ -201,6 +211,14 @@ end
 # Production performance monitoring
 if performance_options[:skylight]
   gem "skylight"
+end
+
+# Analytics
+if analytics_options[:ahoy_blazer]
+  gem "ahoy_matey"
+  gem "blazer"
+  gem "chartkick"  # For charts in Blazer
+  gem "groupdate"  # For time-based grouping in Blazer
 end
 
 gem_group :test do
@@ -451,6 +469,99 @@ after_bundle do
     git commit: "-m 'Configure Skylight for performance monitoring'"
   end
   
+  # === ANALYTICS CONFIGURATION (AHOY + BLAZER) ===
+  
+  if analytics_options[:ahoy_blazer]
+    say "Setting up Ahoy + Blazer for analytics...", :cyan
+    
+    # Generate Ahoy installation
+    generate("ahoy:install")
+    
+    # Generate Blazer installation
+    generate("blazer:install")
+    
+    # Add Blazer route
+    route 'mount Blazer::Engine, at: "/analytics"'
+    
+    # Configure Ahoy to work with Blazer
+    gsub_file "config/initializers/ahoy.rb",
+      "# Ahoy.api = false",
+      "Ahoy.api = true # Enable API for JavaScript tracking"
+    
+    # Add JavaScript tracking for esbuild
+    if File.exist?("app/javascript/application.js")
+      append_to_file "app/javascript/application.js", <<~JS
+        
+        // Ahoy analytics tracking
+        import ahoy from "ahoy.js"
+        
+        // Track page views
+        ahoy.trackView();
+        
+        // Example: Track custom events
+        // ahoy.track("Clicked Button", {button: "signup"});
+      JS
+      
+      # Add ahoy.js to package.json
+      run "yarn add ahoy.js"
+    end
+    
+    # Create sample Blazer queries for Ahoy data
+    create_file "db/blazer_queries.yml", <<~YAML
+      # Sample Blazer queries for Ahoy analytics
+      # Import these in Blazer UI or via rake blazer:import
+      
+      - name: "Daily Active Users"
+        statement: |
+          SELECT
+            DATE(started_at) as day,
+            COUNT(DISTINCT user_id) as unique_users
+          FROM ahoy_visits
+          WHERE started_at >= CURRENT_DATE - INTERVAL '30 days'
+          GROUP BY 1
+          ORDER BY 1
+      
+      - name: "Top Pages (Last 7 Days)"
+        statement: |
+          SELECT
+            properties->>'page' as page,
+            COUNT(*) as views
+          FROM ahoy_events
+          WHERE name = '$view'
+            AND time >= CURRENT_DATE - INTERVAL '7 days'
+          GROUP BY 1
+          ORDER BY 2 DESC
+          LIMIT 20
+      
+      - name: "Browser Breakdown"
+        statement: |
+          SELECT
+            browser,
+            COUNT(*) as visits
+          FROM ahoy_visits
+          WHERE started_at >= CURRENT_DATE - INTERVAL '30 days'
+          GROUP BY 1
+          ORDER BY 2 DESC
+      
+      - name: "Traffic Sources"
+        statement: |
+          SELECT
+            COALESCE(referring_domain, 'Direct') as source,
+            COUNT(*) as visits
+          FROM ahoy_visits
+          WHERE started_at >= CURRENT_DATE - INTERVAL '30 days'
+          GROUP BY 1
+          ORDER BY 2 DESC
+          LIMIT 20
+    YAML
+    
+    # Run migrations for Ahoy and Blazer
+    rails_command("db:migrate")
+    
+    git add: "-A"
+    git commit: "-m 'Configure Ahoy + Blazer for analytics'"
+  end
+  
   # === JAVASCRIPT/CSS LINTING (if selected) ===
   
   if frontend_options[:full_linting]
@@ -660,6 +771,20 @@ after_bundle do
     ENV
   end
   
+  # Add Blazer configuration
+  if analytics_options[:ahoy_blazer]
+    env_example_content += <<~ENV
+      
+      # Blazer Analytics Dashboard
+      # Use your app's database URL (read-only user recommended for production)
+      BLAZER_DATABASE_URL=#{ENV.fetch('DATABASE_URL', "postgresql://localhost/#{app_name}_development")}
+      
+      # Basic authentication for Blazer dashboard (CHANGE THESE IN PRODUCTION!)
+      BLAZER_USERNAME=admin
+      BLAZER_PASSWORD=appdev
+    ENV
+  end
+  
   create_file ".env.example", env_example_content
   
   create_file ".env"
@@ -849,6 +974,8 @@ after_bundle do
   
   performance_monitoring_section = performance_options[:skylight] ? "\n    ## Performance Monitoring\n    \n    This app uses Skylight for performance monitoring. Set your authentication token:\n    ```bash\n    SKYLIGHT_AUTHENTICATION=your_token_here\n    ```\n    \n    Visit [skylight.io](https://skylight.io) to sign up and get your authentication token." : ""
   
+  analytics_section = analytics_options[:ahoy_blazer] ? "\n    ## Analytics\n    \n    This app uses Ahoy for tracking and Blazer for analytics dashboards.\n    \n    - View analytics dashboard: `/analytics`\n    - **Default credentials:** Username: `admin`, Password: `appdev`\n    - **⚠️ IMPORTANT:** Change these credentials before deploying to production!\n    - Track custom events in JavaScript:\n      ```javascript\n      ahoy.track(\"Event Name\", {property: \"value\"});\n      ```\n    - Track events in Ruby:\n      ```ruby\n      ahoy.track \"Event Name\", property: \"value\"\n      ```\n    \n    Sample queries are available in `db/blazer_queries.yml`.\n    \n    ### Securing Blazer in Production\n    \n    The dashboard uses basic authentication by default. For production, you should:\n    1. Change the default credentials in your environment variables\n    2. Consider using your app's authentication (e.g., Devise) instead\n    3. Optionally create a read-only database user for Blazer" : ""
+  
   doc_commands = []
   doc_commands << "- Generate ERD: `bundle exec erd`" if doc_options[:rails_erd]
   doc_commands << "- Annotate models: `bundle exec annotaterb models`"
@@ -933,7 +1060,7 @@ after_bundle do
     
     ## Documentation
     
-    #{doc_commands.join("\n    ")}#{error_monitoring_section}#{performance_monitoring_section}
+    #{doc_commands.join("\n    ")}#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}
   MARKDOWN
   
   # CONTRIBUTING.md
@@ -1013,6 +1140,9 @@ after_bundle do
     say "  #{performance_options[:goldiloader] ? '✅' : '❌'} Goldiloader"
     say "  #{performance_options[:rack_profiler] ? '✅' : '❌'} rack-mini-profiler"
     say "  #{performance_options[:skylight] ? '✅' : '❌'} Skylight"
+    
+    say "\nAnalytics:", :cyan
+    say "  #{analytics_options[:ahoy_blazer] ? '✅' : '❌'} Ahoy + Blazer"
     
     say "\nDocumentation Tools:", :cyan
     say "  ✅ AnnotateRb (always included)"

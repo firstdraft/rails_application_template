@@ -32,7 +32,8 @@ say "  ✅ Shoulda Matchers - One-liner tests"
 say "  ✅ Faker - Test data generation"
 say "  ❌ WebMock - HTTP stubbing (often not needed)"
 say "  ❌ Goldiloader - Auto N+1 prevention (advanced)"
-say "  ✅ rack-mini-profiler - Performance monitoring"
+say "  ✅ rack-mini-profiler - Development performance bar"
+say "  ✅ Skylight - Production performance monitoring"
 say "  ✅ Rails ERD - Entity diagrams"
 say "  ❌ rails_db - Database web UI (security concern)"
 say "  ✅ Strong Migrations - Migration safety"
@@ -61,7 +62,8 @@ if customize
   performance_options = {}
   say "\nPerformance Tools:", :yellow
   performance_options[:goldiloader] = yes?("  Include Goldiloader for automatic N+1 prevention? (y/n)")
-  performance_options[:rack_profiler] = yes?("  Include rack-mini-profiler for performance monitoring? (y/n)")
+  performance_options[:rack_profiler] = yes?("  Include rack-mini-profiler for development performance bar? (y/n)")
+  performance_options[:skylight] = yes?("  Include Skylight for production performance monitoring? (y/n)")
   
   # Documentation tools
   doc_options = {}
@@ -108,7 +110,8 @@ else
   
   performance_options = {
     goldiloader: false,
-    rack_profiler: true
+    rack_profiler: true,
+    skylight: true
   }
   
   doc_options = {
@@ -193,6 +196,11 @@ gem_group :development do
   
   # Migration Safety
   gem "strong_migrations" if security_options[:strong_migrations]
+end
+
+# Production performance monitoring
+if performance_options[:skylight]
+  gem "skylight"
 end
 
 gem_group :test do
@@ -416,6 +424,33 @@ after_bundle do
     git commit: "-m 'Configure Honeybadger for error tracking'"
   end
   
+  # === SKYLIGHT CONFIGURATION (if selected) ===
+  
+  if performance_options[:skylight]
+    # Generate Skylight configuration
+    say "Setting up Skylight for performance monitoring...", :cyan
+    
+    # Create Skylight config file
+    create_file "config/skylight.yml", <<~YAML
+      # Skylight Performance Monitoring Configuration
+      # https://www.skylight.io/support
+      
+      authentication: <%= ENV["SKYLIGHT_AUTHENTICATION"] %>
+      
+      # Uncomment to customize settings:
+      # ignored_endpoints:
+      #   - HeartbeatController#ping
+      #   - HealthController#check
+      
+      # Enable in additional environments:
+      # staging:
+      #   authentication: <%= ENV["SKYLIGHT_AUTHENTICATION"] %>
+    YAML
+    
+    git add: "-A"
+    git commit: "-m 'Configure Skylight for performance monitoring'"
+  end
+  
   # === JAVASCRIPT/CSS LINTING (if selected) ===
   
   if frontend_options[:full_linting]
@@ -616,6 +651,15 @@ after_bundle do
     ENV
   end
   
+  # Add Skylight configuration
+  if performance_options[:skylight]
+    env_example_content += <<~ENV
+      
+      # Skylight Performance Monitoring
+      SKYLIGHT_AUTHENTICATION=your_skylight_authentication_token_here
+    ENV
+  end
+  
   create_file ".env.example", env_example_content
   
   create_file ".env"
@@ -803,6 +847,8 @@ after_bundle do
     ""
   end
   
+  performance_monitoring_section = performance_options[:skylight] ? "\n    ## Performance Monitoring\n    \n    This app uses Skylight for performance monitoring. Set your authentication token:\n    ```bash\n    SKYLIGHT_AUTHENTICATION=your_token_here\n    ```\n    \n    Visit [skylight.io](https://skylight.io) to sign up and get your authentication token." : ""
+  
   doc_commands = []
   doc_commands << "- Generate ERD: `bundle exec erd`" if doc_options[:rails_erd]
   doc_commands << "- Annotate models: `bundle exec annotaterb models`"
@@ -887,7 +933,7 @@ after_bundle do
     
     ## Documentation
     
-    #{doc_commands.join("\n    ")}#{error_monitoring_section}
+    #{doc_commands.join("\n    ")}#{error_monitoring_section}#{performance_monitoring_section}
   MARKDOWN
   
   # CONTRIBUTING.md
@@ -966,6 +1012,7 @@ after_bundle do
     say "  ✅ Bullet (always included)"
     say "  #{performance_options[:goldiloader] ? '✅' : '❌'} Goldiloader"
     say "  #{performance_options[:rack_profiler] ? '✅' : '❌'} rack-mini-profiler"
+    say "  #{performance_options[:skylight] ? '✅' : '❌'} Skylight"
     
     say "\nDocumentation Tools:", :cyan
     say "  ✅ AnnotateRb (always included)"

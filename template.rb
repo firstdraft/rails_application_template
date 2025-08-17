@@ -20,6 +20,7 @@ say "\nDefault configuration includes:", :yellow
 say "\nEssential Tools (always included):", :green
 say "  • RSpec & FactoryBot - Testing framework"
 say "  • StandardRB - Ruby code formatting"
+say "  • Herb - HTML+ERB linting and analysis"
 say "  • Bullet - N+1 query detection"
 say "  • AnnotateRb - Auto-annotate models"
 say "  • Pry, Better Errors, Amazing Print - Debugging"
@@ -133,6 +134,7 @@ gem_group :development, :test do
   # Code Quality (always included)
   gem "standard", require: false
   gem "standard-rails", require: false
+  gem "herb", require: false
   
   # Security
   # Note: Rails 8+ includes brakeman by default, so we don't add it
@@ -326,6 +328,35 @@ after_bundle do
   
   git add: "-A"
   git commit: "-m 'Configure StandardRB'"
+  
+  # === HERB CONFIGURATION ===
+  
+  # Create Herb configuration file
+  create_file ".herb.yml", <<~YAML
+    # Herb configuration for HTML+ERB linting and analysis
+    # https://herb-tools.dev
+    
+    # Files to analyze
+    include:
+      - "app/views/**/*.html.erb"
+      - "app/views/**/*.erb"
+      - "app/components/**/*.html.erb"
+    
+    # Files to exclude
+    exclude:
+      - "vendor/**/*"
+      - "node_modules/**/*"
+      - "tmp/**/*"
+    
+    # Linter rules (customize as needed)
+    # Full list: https://herb-tools.dev/projects/linter#rules
+    rules:
+      # Enable all default rules
+      all: true
+  YAML
+  
+  git add: "-A"
+  git commit: "-m 'Configure Herb for HTML+ERB analysis'"
   
   # === JAVASCRIPT/CSS LINTING (if selected) ===
   
@@ -697,7 +728,8 @@ after_bundle do
   # Rails 8+ includes brakeman by default, so we can always use it
   security_commands.unshift("bundle exec brakeman")
   
-  # README
+  # README (overwrite the default Rails README)
+  remove_file "README.md"
   create_file "README.md", <<~MARKDOWN
     # #{app_name.humanize}
     
@@ -750,6 +782,12 @@ after_bundle do
     ```bash
     bundle exec standardrb
     bundle exec standardrb --fix
+    ```
+    
+    HTML+ERB analysis:
+    ```bash
+    bundle exec herb analyze .
+    bundle exec herb parse app/views/path/to/file.html.erb
     ```#{linting_section}
     
     Security scanning:
@@ -783,6 +821,7 @@ after_bundle do
     ## Code Style
     
     - Ruby: StandardRB
+    - HTML+ERB: Herb
     #{"- JavaScript: ESLint with Thoughtbot config\n    - CSS: Stylelint with Thoughtbot config\n    - ERB: erb_lint" if frontend_options[:full_linting]}
     
     ## Testing
@@ -857,6 +896,7 @@ after_bundle do
     
     say "\nCode Quality:", :cyan
     say "  ✅ StandardRB (always included)"
+    say "  ✅ Herb (always included)"
   else
     say "\n✅ Applied default configuration with sensible choices!", :green
   end

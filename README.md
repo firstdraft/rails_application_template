@@ -44,7 +44,6 @@ A comprehensive Rails application template with modern best practices, testing t
 ### Security & Safety
 - **Brakeman** - Security vulnerability scanning
 - **bundler-audit** - Check for vulnerable gem dependencies
-- **strong_migrations** - Catch unsafe migrations before they run
 
 ### Environment & Configuration
 - **dotenv** - Environment variable management (replaces dotenv-rails)
@@ -104,7 +103,6 @@ During setup, the template will prompt you for:
 
 ### Development Tools
 - Bullet enabled with console and footer output
-- Strong Migrations with sensible timeouts
 - AnnotateRb configuration for model annotations
 - Rails ERD with Bachman notation
 
@@ -179,7 +177,7 @@ This is an enhanced version of the original firstdraft template with:
 - Updated gems (amazing_print instead of awesome_print, annotaterb instead of annotate, dotenv instead of dotenv-rails)
 - Additional testing tools (SimpleCov, WebMock, Shoulda Matchers, Faker)
 - Full linting stack (Prettier, ESLint, Stylelint, erb_lint)
-- Security tools (bundler-audit, strong_migrations)
+- Security tools (bundler-audit)
 - Performance tools (goldiloader, rack-mini-profiler)
 - Modern production configuration (generic instead of Heroku-specific)
 - Comprehensive documentation

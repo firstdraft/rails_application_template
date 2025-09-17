@@ -41,6 +41,7 @@ say "  ✅ bundler-audit - Vulnerability scanning"
 say "  ✅ Rollbar - Error tracking (default choice)"
 say "  ✅ Bootstrap overrides - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
+say "  ❌ UUID primary keys - Use UUIDs instead of integers"
 
 say "\n"
 customize = yes?("Would you like to customize these options? (y/n)")
@@ -103,6 +104,11 @@ if customize
   say "\nFrontend Tools:", :yellow
   frontend_options[:bootstrap_overrides] = yes?("  Include Bootstrap overrides file for easy customization? (y/n)")
   frontend_options[:full_linting] = yes?("  Include full JS/CSS linting stack (Prettier, ESLint, Stylelint)? (y/n)")
+
+  # Database configuration
+  db_options = {}
+  say "\nDatabase Configuration:", :yellow
+  db_options[:use_uuid] = yes?("  Use UUIDs for primary keys instead of integers? (y/n)")
 else
   # Use default configuration
   testing_options = {
@@ -138,6 +144,10 @@ else
   frontend_options = {
     bootstrap_overrides: true,
     full_linting: false
+  }
+
+  db_options = {
+    use_uuid: false
   }
 
   say "\n✅ Using default configuration!", :green
@@ -288,9 +298,9 @@ after_bundle do
     git commit: "-m 'Configure Goldiloader for automatic N+1 prevention'"
   end
 
-  # === UUID CONFIGURATION (Optional) ===
+  # === UUID CONFIGURATION (if selected) ===
 
-  if yes?("\nUse UUIDs for primary keys instead of integers? (y/n)")
+  if db_options[:use_uuid]
     create_file "db/migrate/#{Time.now.utc.strftime("%Y%m%d%H%M%S")}_enable_extension_for_uuid.rb", <<~RUBY
       class EnableExtensionForUuid < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
         def change
@@ -1212,6 +1222,9 @@ after_bundle do
     say "\nFrontend Tools:", :cyan
     say "  #{frontend_options[:bootstrap_overrides] ? '✅' : '❌'} Bootstrap overrides file"
     say "  #{frontend_options[:full_linting] ? '✅' : '❌'} Full JS/CSS/ERB linting stack"
+
+    say "\nDatabase Configuration:", :cyan
+    say "  #{db_options[:use_uuid] ? '✅' : '❌'} UUID primary keys"
 
     say "\nCode Quality:", :cyan
     say "  ✅ StandardRB (always included)"

@@ -981,17 +981,27 @@ after_bundle do
 
   # === PRODUCTION CONFIGURATION ===
 
-  # Force SSL in production
-  uncomment_lines "config/environments/production.rb",
-    /config.force_ssl = true/
+  # Force SSL in production (handle both commented and uncommented states)
+  production_file = "config/environments/production.rb"
+  production_content = File.read(production_file)
 
-  # Configure production logging
-  gsub_file "config/environments/production.rb",
-    /config.log_formatter = ::Logger::Formatter.new/,
-    "config.log_formatter = ::Logger::Formatter.new\n  config.log_tags = [:request_id]"
+  # Only uncomment if it's actually commented
+  if production_content.match?(/^\s*#\s*config.force_ssl = true/)
+    uncomment_lines production_file, /config.force_ssl = true/
+  end
 
-  git add: "-A"
-  git commit: "-m 'Configure production environment'"
+  # Configure production logging (check if not already configured)
+  unless production_content.include?("config.log_tags")
+    gsub_file production_file,
+      /config.log_formatter = ::Logger::Formatter.new/,
+      "config.log_formatter = ::Logger::Formatter.new\n  config.log_tags = [:request_id]"
+  end
+
+  # Only commit if there are changes
+  if !`git status --porcelain`.empty?
+    git add: "-A"
+    git commit: "-m 'Configure production environment'"
+  end
 
   # === PROJECT DOCUMENTATION ===
 
@@ -1172,11 +1182,30 @@ after_bundle do
 
   # === FINAL CLEANUP ===
 
-  # Run linters
-  run "bundle exec standardrb --fix-unsafely"
+  # Run StandardRB to fix formatting issues
+  say "\nRunning StandardRB to fix code formatting...", :cyan
 
-  git add: "-A"
-  git commit: "-m 'Apply StandardRB formatting'"
+  # Run StandardRB with both safe and unsafe fixes
+  system("bundle exec standardrb --fix")
+  system("bundle exec standardrb --fix-unsafely")
+
+  # Check if there are still violations
+  violations_output = `bundle exec standardrb 2>&1`
+  violations_remain = !$?.success?
+
+  if violations_remain
+    say "\n⚠️  Some StandardRB violations could not be auto-fixed:", :yellow
+    say violations_output.lines.grep(/^\s+\w+/).take(10).join, :yellow
+    say "Run 'bundle exec standardrb' after setup to see all remaining issues.", :yellow
+  else
+    say "✅ All StandardRB violations have been fixed!", :green
+  end
+
+  # Commit formatting changes if any
+  if !`git status --porcelain`.empty?
+    git add: "-A"
+    git commit: "-m 'Apply StandardRB formatting'"
+  end
 
   # === SUCCESS MESSAGE ===
 

@@ -1098,7 +1098,7 @@ after_bundle do
 
     Security scanning:
     ```bash
-    #{security_commands.join("\n    ")}
+    #{security_commands.join("\n")}
     ```
 
     ## Performance & N+1 Prevention
@@ -1127,7 +1127,8 @@ after_bundle do
 
     ## Documentation
 
-    #{doc_commands.join("\n    ")}#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}
+    #{doc_commands.join("\n")}
+#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}
   MARKDOWN
 
   # CONTRIBUTING.md

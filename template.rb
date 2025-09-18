@@ -254,6 +254,131 @@ after_bundle do
   git add: "-A"
   git commit: "-m 'Initial Rails app with custom template'"
 
+  # === CONFIGURE SINGLE DATABASE FOR ALL SOLID ADAPTERS ===
+
+  say "Configuring all Solid adapters to use the primary database...", :cyan
+
+  # Modify database.yml to use single database for all adapters
+  database_yml_content = File.read("config/database.yml")
+
+  # Replace the production section to use single database
+  if database_yml_content.include?("production:")
+    # Update production config to point all adapters to primary database
+    gsub_file "config/database.yml",
+      /production:.*?(?=\n\n|\n[a-z]+:|\z)/m,
+      <<~YAML.strip
+production:
+  primary: &primary_production
+    <<: *default
+    url: <%= ENV["DATABASE_URL"] %>
+
+  # Use the same database for all Solid adapters
+  cache:
+    <<: *primary_production
+  queue:
+    <<: *primary_production
+  cable:
+    <<: *primary_production
+      YAML
+  end
+
+  # For development and test, also point to the primary database
+  # Rails 8 uses different database names by default, we'll unify them
+  gsub_file "config/database.yml",
+    /development:.*?(?=\n\n|\ntest:|\z)/m,
+    <<~YAML.strip
+development:
+  primary: &primary_development
+    <<: *default
+    database: #{app_name}_development
+
+  # Use the same database for all Solid adapters
+  cache:
+    <<: *primary_development
+  queue:
+    <<: *primary_development
+  cable:
+    <<: *primary_development
+    YAML
+
+  gsub_file "config/database.yml",
+    /test:.*?(?=\n\n|\nproduction:|\z)/m,
+    <<~YAML.strip
+test:
+  primary: &primary_test
+    <<: *default
+    database: #{app_name}_test
+
+  # Use the same database for all Solid adapters
+  cache:
+    <<: *primary_test
+  queue:
+    <<: *primary_test
+  cable:
+    <<: *primary_test
+    YAML
+
+  # Move Solid schema files into regular migrations
+  # This ensures all tables are created in the primary database
+  timestamp = Time.now.utc.strftime("%Y%m%d%H%M%S").to_i
+
+  # Create migrations for cache, queue, and cable tables
+  if File.exist?("db/cache_schema.rb")
+    cache_schema = File.read("db/cache_schema.rb")
+    # Extract the content inside the schema definition
+    if cache_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
+      cache_content = $1
+      create_file "db/migrate/#{timestamp}_create_solid_cache_tables.rb", <<~RUBY
+        class CreateSolidCacheTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
+          def change
+        #{cache_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+          end
+        end
+      RUBY
+      timestamp += 1
+    end
+  end
+
+  if File.exist?("db/queue_schema.rb")
+    queue_schema = File.read("db/queue_schema.rb")
+    if queue_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
+      queue_content = $1
+      create_file "db/migrate/#{timestamp}_create_solid_queue_tables.rb", <<~RUBY
+        class CreateSolidQueueTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
+          def change
+        #{queue_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+          end
+        end
+      RUBY
+      timestamp += 1
+    end
+  end
+
+  if File.exist?("db/cable_schema.rb")
+    cable_schema = File.read("db/cable_schema.rb")
+    if cable_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
+      cable_content = $1
+      create_file "db/migrate/#{timestamp}_create_solid_cable_tables.rb", <<~RUBY
+        class CreateSolidCableTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
+          def change
+        #{cable_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+          end
+        end
+      RUBY
+    end
+  end
+
+  # Remove the separate schema files as they're no longer needed
+  remove_file "db/cache_schema.rb" if File.exist?("db/cache_schema.rb")
+  remove_file "db/queue_schema.rb" if File.exist?("db/queue_schema.rb")
+  remove_file "db/cable_schema.rb" if File.exist?("db/cable_schema.rb")
+
+  # Run migrations to create all tables in the primary database
+  rails_command("db:migrate")
+
+  git add: "-A"
+  git commit: "-m 'Configure single database for all Solid adapters'"
+
   # === GENERATOR CONFIGURATION ===
 
   generators_config = <<-HEREDOC.gsub(/^  /, "")

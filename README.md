@@ -69,7 +69,6 @@ rails new my_app \
   --skip-test \
   --skip-kamal \
   --skip-rubocop \
-  --skip-multi-database \
   --template=https://raw.githubusercontent.com/firstdraft/rails_application_template/main/template.rb
 ```
 

@@ -42,6 +42,7 @@ say "  ✅ Rollbar - Error tracking (default choice)"
 say "  ✅ Bootstrap overrides - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
 say "  ❌ UUID primary keys - Use UUIDs instead of integers"
+say "  ❌ Multi-database setup - Rails 8 separate databases (single DB is simpler for deployment)"
 
 say "\n"
 customize = yes?("Would you like to customize these options? (y/n)")
@@ -109,6 +110,7 @@ if customize
   db_options = {}
   say "\nDatabase Configuration:", :yellow
   db_options[:use_uuid] = yes?("  Use UUIDs for primary keys instead of integers? (y/n)")
+  db_options[:multi_database] = yes?("  Use Rails 8 multi-database setup (separate DBs for cache/queue/cable)? (y/n)")
 else
   # Use default configuration
   testing_options = {
@@ -147,7 +149,8 @@ else
   }
 
   db_options = {
-    use_uuid: false
+    use_uuid: false,
+    multi_database: false
   }
 
   say "\n✅ Using default configuration!", :green
@@ -254,130 +257,173 @@ after_bundle do
   git add: "-A"
   git commit: "-m 'Initial Rails app with custom template'"
 
-  # === CONFIGURE SINGLE DATABASE FOR ALL SOLID ADAPTERS ===
+  # === DATABASE CONFIGURATION ===
 
-  say "Configuring all Solid adapters to use the primary database...", :cyan
+  unless db_options[:multi_database]
+    say "Configuring single database for all environments (disabling Rails 8 multi-database)...", :cyan
 
-  # Modify database.yml to use single database for all adapters
-  database_yml_content = File.read("config/database.yml")
+    # Completely replace database.yml with traditional single-database configuration
+    remove_file "config/database.yml"
 
-  # Replace the production section to use single database
-  if database_yml_content.include?("production:")
-    # Update production config to point all adapters to primary database
-    gsub_file "config/database.yml",
-      /production:.*?(?=\n\n|\n[a-z]+:|\z)/m,
-      <<~YAML.strip
-production:
-  primary: &primary_production
-    <<: *default
-    url: <%= ENV["DATABASE_URL"] %>
+    create_file "config/database.yml", <<~YAML
+      # PostgreSQL. Versions 9.3 and up are supported.
+      #
+      # Install the pg driver:
+      #   gem install pg
+      # On macOS with Homebrew:
+      #   gem install pg -- --with-pg-config=/usr/local/bin/pg_config
+      # On Windows:
+      #   gem install pg
+      #       Choose the win32 build.
+      #       Install PostgreSQL and put its /bin directory on your path.
+      #
+      # Configure Using Gemfile
+      # gem "pg"
+      #
+      default: &default
+        adapter: postgresql
+        encoding: unicode
+        # For details on connection pooling, see Rails configuration guide
+        # https://guides.rubyonrails.org/configuring.html#database-pooling
+        pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
-  # Use the same database for all Solid adapters
-  cache:
-    <<: *primary_production
-  queue:
-    <<: *primary_production
-  cable:
-    <<: *primary_production
-      YAML
-  end
+      development:
+        <<: *default
+        database: #{app_name}_development
 
-  # For development and test, also point to the primary database
-  # Rails 8 uses different database names by default, we'll unify them
-  gsub_file "config/database.yml",
-    /development:.*?(?=\n\n|\ntest:|\z)/m,
-    <<~YAML.strip
-development:
-  primary: &primary_development
-    <<: *default
-    database: #{app_name}_development
+        # The specified database role being used to connect to PostgreSQL.
+        # To create additional roles in PostgreSQL see `$ createuser --help`.
+        # When left blank, PostgreSQL will use the default role. This is
+        # the same name as the operating system user running Rails.
+        #username: #{app_name}
 
-  # Use the same database for all Solid adapters
-  cache:
-    <<: *primary_development
-  queue:
-    <<: *primary_development
-  cable:
-    <<: *primary_development
+        # The password associated with the PostgreSQL role (username).
+        #password:
+
+        # Connect on a TCP socket. Omitted by default since the client uses a
+        # domain socket that doesn't need configuration. Windows does not have
+        # domain sockets, so uncomment these lines.
+        #host: localhost
+
+        # The TCP port the server listens on. Defaults to 5432.
+        # If your server runs on a different port number, change accordingly.
+        #port: 5432
+
+        # Schema search path. The server defaults to $user,public
+        #schema_search_path: myapp,sharedapp,public
+
+        # Minimum log levels, in increasing order:
+        #   debug5, debug4, debug3, debug2, debug1,
+        #   log, notice, warning, error, fatal, and panic
+        # Defaults to warning.
+        #min_messages: notice
+
+      # Warning: The database defined as "test" will be erased and
+      # re-generated from your development database when you run "rake".
+      # Do not set this db to the same as development or production.
+      test:
+        <<: *default
+        database: #{app_name}_test
+
+      # As with config/credentials.yml, you never want to store sensitive information,
+      # like your database password, in your source code. If your source code is
+      # ever seen by anyone, they now have access to your database.
+      #
+      # Instead, provide the password or a full connection URL as an environment
+      # variable when you boot the app. For example:
+      #
+      #   DATABASE_URL="postgres://myuser:mypass@localhost/somedatabase"
+      #
+      # If the connection URL is provided in the special DATABASE_URL environment
+      # variable, Rails will automatically merge its configuration values on top of
+      # the values provided in this file. Alternatively, you can specify a connection
+      # URL environment variable explicitly:
+      #
+      #   production:
+      #     url: <%= ENV["MY_APP_DATABASE_URL"] %>
+      #
+      # Read https://guides.rubyonrails.org/configuring.html#configuring-a-database
+      # for a full overview on how database connection configuration can be specified.
+      #
+      production:
+        <<: *default
+        url: <%= ENV["DATABASE_URL"] %>
     YAML
 
-  gsub_file "config/database.yml",
-    /test:.*?(?=\n\n|\nproduction:|\z)/m,
-    <<~YAML.strip
-test:
-  primary: &primary_test
-    <<: *default
-    database: #{app_name}_test
+    # Convert Solid schema files into regular migrations
+    # This ensures all tables are created in the primary database
+    timestamp = Time.now.utc.strftime("%Y%m%d%H%M%S").to_i
 
-  # Use the same database for all Solid adapters
-  cache:
-    <<: *primary_test
-  queue:
-    <<: *primary_test
-  cable:
-    <<: *primary_test
-    YAML
-
-  # Move Solid schema files into regular migrations
-  # This ensures all tables are created in the primary database
-  timestamp = Time.now.utc.strftime("%Y%m%d%H%M%S").to_i
-
-  # Create migrations for cache, queue, and cable tables
-  if File.exist?("db/cache_schema.rb")
-    cache_schema = File.read("db/cache_schema.rb")
-    # Extract the content inside the schema definition
-    if cache_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
-      cache_content = $1
-      create_file "db/migrate/#{timestamp}_create_solid_cache_tables.rb", <<~RUBY
-        class CreateSolidCacheTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
-          def change
-        #{cache_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+    # Create migrations for cache, queue, and cable tables
+    if File.exist?("db/cache_schema.rb")
+      cache_schema = File.read("db/cache_schema.rb")
+      # Extract the content inside the schema definition
+      if cache_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
+        cache_content = $1
+        create_file "db/migrate/#{timestamp}_create_solid_cache_tables.rb", <<~RUBY
+          class CreateSolidCacheTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
+            def change
+          #{cache_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+            end
           end
-        end
-      RUBY
-      timestamp += 1
+        RUBY
+        timestamp += 1
+      end
     end
-  end
 
-  if File.exist?("db/queue_schema.rb")
-    queue_schema = File.read("db/queue_schema.rb")
-    if queue_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
-      queue_content = $1
-      create_file "db/migrate/#{timestamp}_create_solid_queue_tables.rb", <<~RUBY
-        class CreateSolidQueueTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
-          def change
-        #{queue_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+    if File.exist?("db/queue_schema.rb")
+      queue_schema = File.read("db/queue_schema.rb")
+      if queue_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
+        queue_content = $1
+        create_file "db/migrate/#{timestamp}_create_solid_queue_tables.rb", <<~RUBY
+          class CreateSolidQueueTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
+            def change
+          #{queue_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+            end
           end
-        end
-      RUBY
-      timestamp += 1
+        RUBY
+        timestamp += 1
+      end
     end
-  end
 
-  if File.exist?("db/cable_schema.rb")
-    cable_schema = File.read("db/cable_schema.rb")
-    if cable_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
-      cable_content = $1
-      create_file "db/migrate/#{timestamp}_create_solid_cable_tables.rb", <<~RUBY
-        class CreateSolidCableTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
-          def change
-        #{cable_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+    if File.exist?("db/cable_schema.rb")
+      cable_schema = File.read("db/cable_schema.rb")
+      if cable_schema.match(/ActiveRecord::Schema.*?\.define.*?do\s*(.*)\s*end/m)
+        cable_content = $1
+        create_file "db/migrate/#{timestamp}_create_solid_cable_tables.rb", <<~RUBY
+          class CreateSolidCableTables < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
+            def change
+          #{cable_content.split("\n").map { |line| "    " + line }.join("\n").rstrip}
+            end
           end
-        end
-      RUBY
+        RUBY
+      end
     end
+
+    # Remove the separate schema files and migration directories
+    remove_file "db/cache_schema.rb" if File.exist?("db/cache_schema.rb")
+    remove_file "db/queue_schema.rb" if File.exist?("db/queue_schema.rb")
+    remove_file "db/cable_schema.rb" if File.exist?("db/cable_schema.rb")
+
+    # Remove separate migration directories (Rails 8 multi-database feature)
+    remove_dir "db/cache_migrate" if File.directory?("db/cache_migrate")
+    remove_dir "db/queue_migrate" if File.directory?("db/queue_migrate")
+    remove_dir "db/cable_migrate" if File.directory?("db/cable_migrate")
+
+    # Run migrations to create all tables in the primary database
+    rails_command("db:migrate")
+
+    git add: "-A"
+    git commit: "-m 'Configure single database (disable Rails 8 multi-database)'"
+  else
+    say "Keeping Rails 8 multi-database setup (separate databases for cache/queue/cable)...", :cyan
+
+    # Just run migrations - Rails 8 default multi-database setup is already configured
+    rails_command("db:migrate")
+
+    git add: "-A"
+    git commit: "-m 'Run initial migrations with Rails 8 multi-database setup'"
   end
-
-  # Remove the separate schema files as they're no longer needed
-  remove_file "db/cache_schema.rb" if File.exist?("db/cache_schema.rb")
-  remove_file "db/queue_schema.rb" if File.exist?("db/queue_schema.rb")
-  remove_file "db/cable_schema.rb" if File.exist?("db/cable_schema.rb")
-
-  # Run migrations to create all tables in the primary database
-  rails_command("db:migrate")
-
-  git add: "-A"
-  git commit: "-m 'Configure single database for all Solid adapters'"
 
   # === GENERATOR CONFIGURATION ===
 
@@ -1382,6 +1428,7 @@ test:
 
     say "\nDatabase Configuration:", :cyan
     say "  #{db_options[:use_uuid] ? '✅' : '❌'} UUID primary keys"
+    say "  #{db_options[:multi_database] ? '✅' : '❌'} Rails 8 multi-database setup (separate DBs for cache/queue/cable)"
 
     say "\nCode Quality:", :cyan
     say "  ✅ StandardRB (always included)"

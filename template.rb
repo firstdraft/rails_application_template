@@ -190,14 +190,6 @@ gem_group :development, :test do
   # Note: Rails 8+ includes brakeman by default, so we don't add it
   gem "bundler-audit", require: false if security_options[:bundler_audit]
 
-  # Error Monitoring
-  case monitoring_options[:error_service]
-  when "rollbar"
-    gem "rollbar"
-  when "honeybadger"
-    gem "honeybadger"
-  end
-
   # ERB Linting (only with full linting)
   if frontend_options[:full_linting]
     gem "better_html", require: false
@@ -227,6 +219,14 @@ if analytics_options[:ahoy_blazer]
   gem "blazer"
   gem "chartkick"  # For charts in Blazer
   gem "groupdate"  # For time-based grouping in Blazer
+end
+
+# Error Monitoring (outside of any group)
+case monitoring_options[:error_service]
+when "rollbar"
+  gem "rollbar"
+when "honeybadger"
+  gem "honeybadger"
 end
 
 gem_group :test do
@@ -582,8 +582,10 @@ test:
     # Generate Rollbar configuration
     generate("rollbar")
 
-    # Rollbar generator already sets up ENV['ROLLBAR_ACCESS_TOKEN']
-    # We'll add the token to .env.example later when we create it
+    # Rollbar generator only disables in test by default, we also want to disable in development
+    gsub_file "config/initializers/rollbar.rb",
+      /# Here we'll disable in 'test':\n  if Rails\.env\.test\?/,
+      "# Here we'll disable in 'test' and 'development':\n  if Rails.env.test? || Rails.env.development?"
 
     git add: "-A"
     git commit: "-m 'Configure Rollbar for error tracking'"

@@ -43,6 +43,7 @@ say "  ✅ Bootstrap overrides - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
 say "  ❌ UUID primary keys - Use UUIDs instead of integers"
 say "  ❌ Multi-database setup - Rails 8 separate databases (single DB is simpler for deployment)"
+say "  ❌ Render.com deployment - Build script and render.yaml blueprint"
 
 say "\n"
 customize = yes?("Would you like to customize these options? (y/n)")
@@ -111,6 +112,16 @@ if customize
   say "\nDatabase Configuration:", :yellow
   db_options[:use_uuid] = yes?("  Use UUIDs for primary keys instead of integers? (y/n)")
   db_options[:multi_database] = yes?("  Use Rails 8 multi-database setup (separate DBs for cache/queue/cable)? (y/n)")
+
+  # Deployment configuration
+  render_options = {}
+  say "\nDeployment:", :yellow
+  render_options[:enabled] = yes?("  Configure for Render.com deployment (build script + render.yaml)? (y/n)")
+  if render_options[:enabled]
+    render_options[:separate_worker] = yes?("  Run Solid Queue as separate worker service? (y/n)")
+  else
+    render_options[:separate_worker] = false
+  end
 else
   # Use default configuration
   testing_options = {
@@ -151,6 +162,11 @@ else
   db_options = {
     use_uuid: false,
     multi_database: false
+  }
+
+  render_options = {
+    enabled: false,
+    separate_worker: false
   }
 
   say "\n✅ Using default configuration!", :green
@@ -467,6 +483,94 @@ after_bundle do
 
     git add: "-A"
     git commit: "-m 'Configure Goldiloader for automatic N+1 prevention'"
+  end
+
+  # === RENDER.COM DEPLOYMENT CONFIGURATION (if selected) ===
+
+  if render_options[:enabled]
+    say "Configuring for Render.com deployment...", :cyan
+
+    # Create bin/render-build.sh
+    create_file "bin/render-build.sh", <<~BASH
+      #!/usr/bin/env bash
+      # exit on error
+      set -o errexit
+
+      bundle install
+      bundle exec rake db:migrate
+      bundle exec rake assets:precompile
+      bundle exec rake assets:clean
+    BASH
+
+    # Make script executable
+    chmod "bin/render-build.sh", 0755
+
+    # Create render.yaml blueprint
+    render_yaml_content = <<~YAML
+      databases:
+        - name: #{app_name}-db
+          databaseName: #{app_name}_production
+          user: #{app_name}
+          plan: free
+
+      services:
+        - type: web
+          name: #{app_name}-web
+          runtime: ruby
+          plan: free
+          buildCommand: "./bin/render-build.sh"
+          startCommand: "bundle exec puma -C config/puma.rb"
+          healthCheckPath: /up
+          envVars:
+            - key: DATABASE_URL
+              fromDatabase:
+                name: #{app_name}-db
+                property: connectionString
+            - key: RAILS_MASTER_KEY
+              sync: false
+            - key: WEB_CONCURRENCY
+              value: 2
+    YAML
+
+    # Add worker service if separate_worker is enabled
+    if render_options[:separate_worker]
+      render_yaml_content += <<~YAML
+
+        - type: worker
+          name: #{app_name}-worker
+          runtime: ruby
+          plan: free
+          buildCommand: "bundle install"
+          startCommand: "bundle exec rake solid_queue:start"
+          envVars:
+            - key: DATABASE_URL
+              fromDatabase:
+                name: #{app_name}-db
+                property: connectionString
+            - key: RAILS_MASTER_KEY
+              sync: false
+      YAML
+    end
+
+    create_file "render.yaml", render_yaml_content
+
+    # Configure Puma plugin for Solid Queue if not using separate worker
+    unless render_options[:separate_worker]
+      # Add plugin to puma.rb
+      append_to_file "config/puma.rb", <<~RUBY
+
+        # Use Solid Queue with Puma (runs background jobs in web process)
+        plugin :solid_queue
+      RUBY
+
+      # Silence polling in development
+      inject_into_file "config/environments/development.rb",
+        "  # Silence Solid Queue polling logs in development\n  config.solid_queue.silence_polling = true\n\n",
+        after: "Rails.application.configure do\n"
+    end
+
+    git add: "-A"
+    git commit: "-m 'Configure Render.com deployment with #{render_options[:separate_worker] ? 'separate worker service' : 'Puma plugin'}'"
   end
 
   # === UUID CONFIGURATION (if selected) ===
@@ -1196,6 +1300,16 @@ after_bundle do
 
   analytics_section = analytics_options[:ahoy_blazer] ? "\n    ## Analytics\n    \n    This app uses Ahoy for tracking and Blazer for analytics dashboards.\n    \n    - View analytics dashboard: `/analytics`\n    - **Authentication:** Check `.env` file for auto-generated credentials\n    - **Username:** `admin`\n    - **Password:** Unique 16-character password in `.env` file\n    - Track custom events in JavaScript:\n      ```javascript\n      ahoy.track(\"Event Name\", {property: \"value\"});\n      ```\n    - Track events in Ruby:\n      ```ruby\n      ahoy.track \"Event Name\", property: \"value\"\n      ```\n    \n    Sample queries are available in `db/blazer_queries.yml`.\n    \n    ### Securing Blazer in Production\n    \n    The dashboard uses basic authentication with a unique auto-generated password.\n    For production, you can:\n    1. Keep the strong auto-generated password\n    2. Use your app's authentication (e.g., Devise) instead\n    3. Create a read-only database user for Blazer\n    4. Restrict access by IP or VPN" : ""
 
+  render_deployment_section = if render_options[:enabled]
+    worker_info = render_options[:separate_worker] ?
+      "Background jobs run in a separate worker service for better resource isolation." :
+      "Background jobs run in the web process using the Puma plugin (simpler setup, shared resources)."
+
+    "\n    ## Deployment to Render.com\n    \n    This app is configured for easy deployment to Render.com.\n    \n    ### Quick Deploy\n    \n    1. Push your code to GitHub\n    2. Connect your repository to Render\n    3. Render will automatically detect the `render.yaml` blueprint\n    4. Set the `RAILS_MASTER_KEY` environment variable in the Render dashboard:\n       - Find your key in `config/master.key`\n       - Add it as an environment variable (not synced from the blueprint)\n    \n    ### What's Configured\n    \n    - **Build script**: `bin/render-build.sh` handles dependencies, migrations, and assets\n    - **Database**: PostgreSQL database automatically provisioned\n    - **Health checks**: Rails 8's `/up` endpoint for monitoring\n    - **Concurrency**: `WEB_CONCURRENCY=2` to prevent memory issues\n    - **Background jobs**: #{worker_info}\n    \n    ### Manual Deployment\n    \n    If you prefer manual setup instead of the blueprint:\n    \n    1. Create a new Web Service on Render\n    2. Connect your repository\n    3. Set Build Command: `./bin/render-build.sh`\n    4. Set Start Command: `bundle exec puma -C config/puma.rb`\n    5. Add PostgreSQL database\n    6. Set environment variables:\n       - `DATABASE_URL` (from database)\n       - `RAILS_MASTER_KEY` (from config/master.key)\n       - `WEB_CONCURRENCY=2`\n    #{render_options[:separate_worker] ? "\n    7. Create a Background Worker service:\n       - Build Command: `bundle install`\n       - Start Command: `bundle exec rake solid_queue:start`\n       - Add same `DATABASE_URL` and `RAILS_MASTER_KEY`" : ""}\n    \n    Learn more: [Render Rails 8 Deployment Guide](https://render.com/docs/deploy-rails-8)"
+  else
+    ""
+  end
+
   doc_commands = []
   doc_commands << "- Generate ERD: `bundle exec erd`" if doc_options[:rails_erd]
   doc_commands << "- Annotate models: `bundle exec annotaterb models`"
@@ -1301,7 +1415,7 @@ after_bundle do
     ## Documentation
 
     #{doc_commands.join("\n")}
-#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}
+#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}#{render_deployment_section}
   MARKDOWN
 
   # CONTRIBUTING.md
@@ -1429,6 +1543,12 @@ after_bundle do
     say "\nDatabase Configuration:", :cyan
     say "  #{db_options[:use_uuid] ? '✅' : '❌'} UUID primary keys"
     say "  #{db_options[:multi_database] ? '✅' : '❌'} Rails 8 multi-database setup (separate DBs for cache/queue/cable)"
+
+    say "\nDeployment:", :cyan
+    say "  #{render_options[:enabled] ? '✅' : '❌'} Render.com configuration (build script + render.yaml)"
+    if render_options[:enabled]
+      say "    • Background jobs: #{render_options[:separate_worker] ? 'Separate worker service' : 'Puma plugin (runs in web process)'}"
+    end
 
     say "\nCode Quality:", :cyan
     say "  ✅ StandardRB (always included)"

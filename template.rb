@@ -798,7 +798,7 @@ after_bundle do
 
     # Configure Ahoy to work with Blazer
     gsub_file "config/initializers/ahoy.rb",
-      "# Ahoy.api = false",
+      "Ahoy.api = false",
       "Ahoy.api = true # Enable API for JavaScript tracking"
 
     # Add JavaScript tracking for esbuild

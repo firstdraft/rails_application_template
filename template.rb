@@ -276,9 +276,10 @@ after_bundle do
   # === DATABASE CONFIGURATION ===
 
   unless db_options[:multi_database]
-    say "Configuring single database for all environments (disabling Rails 8 multi-database)...", :cyan
+    say "Configuring single database for all environments (cache/queue/cable share primary DB)...", :cyan
 
-    # Completely replace database.yml with traditional single-database configuration
+    # Update database.yml to make cache, queue, and cable point to the same database as primary
+    # This keeps the Rails 8 structure but consolidates to a single database
     remove_file "config/database.yml"
 
     create_file "config/database.yml", <<~YAML
@@ -304,42 +305,56 @@ after_bundle do
         pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
       development:
-        <<: *default
-        database: #{app_name}_development
+        primary: &primary_development
+          <<: *default
+          database: #{app_name}_development
 
-        # The specified database role being used to connect to PostgreSQL.
-        # To create additional roles in PostgreSQL see `$ createuser --help`.
-        # When left blank, PostgreSQL will use the default role. This is
-        # the same name as the operating system user running Rails.
-        #username: #{app_name}
+          # The specified database role being used to connect to PostgreSQL.
+          # To create additional roles in PostgreSQL see `$ createuser --help`.
+          # When left blank, PostgreSQL will use the default role. This is
+          # the same name as the operating system user running Rails.
+          #username: #{app_name}
 
-        # The password associated with the PostgreSQL role (username).
-        #password:
+          # The password associated with the PostgreSQL role (username).
+          #password:
 
-        # Connect on a TCP socket. Omitted by default since the client uses a
-        # domain socket that doesn't need configuration. Windows does not have
-        # domain sockets, so uncomment these lines.
-        #host: localhost
+          # Connect on a TCP socket. Omitted by default since the client uses a
+          # domain socket that doesn't need configuration. Windows does not have
+          # domain sockets, so uncomment these lines.
+          #host: localhost
 
-        # The TCP port the server listens on. Defaults to 5432.
-        # If your server runs on a different port number, change accordingly.
-        #port: 5432
+          # The TCP port the server listens on. Defaults to 5432.
+          # If your server runs on a different port number, change accordingly.
+          #port: 5432
 
-        # Schema search path. The server defaults to $user,public
-        #schema_search_path: myapp,sharedapp,public
+          # Schema search path. The server defaults to $user,public
+          #schema_search_path: myapp,sharedapp,public
 
-        # Minimum log levels, in increasing order:
-        #   debug5, debug4, debug3, debug2, debug1,
-        #   log, notice, warning, error, fatal, and panic
-        # Defaults to warning.
-        #min_messages: notice
+          # Minimum log levels, in increasing order:
+          #   debug5, debug4, debug3, debug2, debug1,
+          #   log, notice, warning, error, fatal, and panic
+          # Defaults to warning.
+          #min_messages: notice
+        cache:
+          <<: *primary_development
+        queue:
+          <<: *primary_development
+        cable:
+          <<: *primary_development
 
       # Warning: The database defined as "test" will be erased and
       # re-generated from your development database when you run "rake".
       # Do not set this db to the same as development or production.
       test:
-        <<: *default
-        database: #{app_name}_test
+        primary: &primary_test
+          <<: *default
+          database: #{app_name}_test
+        cache:
+          <<: *primary_test
+        queue:
+          <<: *primary_test
+        cable:
+          <<: *primary_test
 
       # As with config/credentials.yml, you never want to store sensitive information,
       # like your database password, in your source code. If your source code is
@@ -362,8 +377,15 @@ after_bundle do
       # for a full overview on how database connection configuration can be specified.
       #
       production:
-        <<: *default
-        url: <%= ENV["DATABASE_URL"] %>
+        primary: &primary_production
+          <<: *default
+          url: <%= ENV["DATABASE_URL"] %>
+        cache:
+          <<: *primary_production
+        queue:
+          <<: *primary_production
+        cable:
+          <<: *primary_production
     YAML
 
     # Convert Solid schema files into regular migrations
@@ -430,7 +452,7 @@ after_bundle do
     rails_command("db:migrate")
 
     git add: "-A"
-    git commit: "-m 'Configure single database (disable Rails 8 multi-database)'"
+    git commit: "-m 'Configure single database (cache/queue/cable share primary DB)'"
   else
     say "Keeping Rails 8 multi-database setup (separate databases for cache/queue/cable)...", :cyan
 

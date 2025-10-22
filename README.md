@@ -16,40 +16,47 @@ A comprehensive Rails application template with modern best practices, testing t
 - **better_errors + binding_of_caller** - Better error pages with REPL
 - **amazing_print** - Pretty-print Ruby objects (replaces deprecated awesome_print)
 - **bullet** - N+1 query detection
-- **goldiloader** - Automatic N+1 prevention
-- **rack-mini-profiler** - Performance profiling
+- **goldiloader** - Automatic N+1 prevention (optional, default: enabled)
+- **rack-mini-profiler** - Performance profiling (optional, default: enabled)
 
 ### Testing Suite
 - **RSpec Rails** with proper configuration
 - **Capybara + Selenium** for system testing
 - **Factory Bot** for test factories
-- **Shoulda Matchers** for one-liner tests
-- **Faker** for test data generation
-- **SimpleCov** for code coverage reporting
-- **WebMock** for HTTP request stubbing
+- **Shoulda Matchers** for one-liner tests (optional, default: enabled)
+- **Faker** for test data generation (optional, default: enabled)
+- **SimpleCov** for code coverage reporting (optional, default: enabled)
+- **WebMock** for HTTP request stubbing (optional, default: disabled)
 - **action_dispatch-testing-integration-capybara** - Enhanced Capybara integration
 
 ### Code Quality & Linting
 - **StandardRB + Standard-Rails** for Ruby
-- **Prettier** for JavaScript/CSS formatting
-- **ESLint** with Thoughtbot configuration
-- **Stylelint** with Thoughtbot configuration
+- **Prettier** for JavaScript/CSS formatting (optional, default: disabled)
+- **ESLint** with Thoughtbot configuration (optional, default: disabled)
+- **Stylelint** with Thoughtbot configuration (optional, default: disabled)
 - **erb_lint + better_html** for ERB template linting
 
 ### Documentation & Visualization
 - **AnnotateRb** - Automatic model schema annotations (replaces deprecated annotate gem)
-- **Rails ERD** - Entity relationship diagram generation
-- **rails_db** - Web UI for database browsing
+- **Rails ERD** - Entity relationship diagram generation (optional, default: enabled)
+- **rails_db** - Web UI for database browsing (optional, default: disabled)
 
 ### Security & Safety
 - **Brakeman** - Security vulnerability scanning
-- **bundler-audit** - Check for vulnerable gem dependencies
+- **bundler-audit** - Check for vulnerable gem dependencies (optional, default: enabled)
+
+### Monitoring & Analytics
+- **Error Monitoring** - Choose between Rollbar (default), Honeybadger, or None (optional)
+- **Skylight** - Production performance monitoring (optional, default: enabled)
+- **Ahoy + Blazer** - Analytics tracking and SQL-based dashboard (optional, default: enabled)
 
 ### Environment & Configuration
 - **dotenv** - Environment variable management (replaces dotenv-rails)
 - **Force SSL** in production
 - **Enhanced production logging**
-- Optional UUID primary keys
+- **Database Options**:
+  - Optional UUID primary keys
+  - Optional Rails 8 multi-database setup (separate databases for cache/queue/cable) - defaults to single database for simpler deployment
 
 ### Project Files
 - Comprehensive README template
@@ -83,8 +90,24 @@ rails new my_app \
 
 ### Interactive Options
 
-During setup, the template will prompt you for:
-- **UUID Primary Keys**: Choose between standard integers or UUIDs for primary keys
+The template offers two modes:
+
+1. **Default Configuration** (recommended): Includes most tools with sensible defaults
+2. **Custom Configuration**: Interactive prompts to choose which tools to include
+
+If you choose custom configuration, you'll be prompted for:
+
+- **Testing Tools**: SimpleCov, Shoulda Matchers, Faker, WebMock
+- **Performance Tools**: Goldiloader, rack-mini-profiler, Skylight
+- **Analytics**: Ahoy + Blazer for tracking and dashboards
+- **Documentation Tools**: Rails ERD, rails_db browser
+- **Security Tools**: bundler-audit for vulnerability scanning
+- **Error Monitoring**: Rollbar, Honeybadger, or None
+- **Frontend Tools**: Bootstrap overrides, full linting stack (Prettier, ESLint, Stylelint)
+- **Database Configuration**:
+  - UUID primary keys vs. standard integers
+  - Rails 8 multi-database setup (separate databases for cache/queue/cable) vs. single database
+- **Deployment**: Render.com-specific configuration (build script, render.yaml, worker setup)
 
 ## What Gets Configured
 
@@ -154,7 +177,10 @@ bundle exec annotaterb models  # Update model annotations
 ```
 
 ### Database
-Visit `/rails_db` in development for web UI
+Visit `/rails_db` in development for web UI (if enabled)
+
+### Analytics & Monitoring
+Visit `/blazer` for analytics dashboard (if Ahoy + Blazer enabled)
 
 ## Background Jobs
 
@@ -164,23 +190,41 @@ The template uses Rails 8's default Solid Queue for background job processing. F
 
 ## Deployment
 
-This template creates apps configured for generic production deployment, suitable for:
-- [Render.com](https://render.com/docs/deploy-rails-8)
+This template creates apps configured for generic production deployment, suitable for any modern hosting platform.
+
+### Render.com (Optional)
+
+When enabled during setup, the template generates Render.com-specific configuration:
+- `bin/render-build.sh` - Automated build script for bundle, migrations, and assets
+- `render.yaml` - Blueprint file with web service and database configuration
+- Health check endpoint (`/up`) configuration
+- Choice between Solid Queue as a Puma plugin or separate worker service
+- Environment variable guidance for `RAILS_MASTER_KEY` and `WEB_CONCURRENCY`
+
+See [Render's Rails 8 deployment guide](https://render.com/docs/deploy-rails-8) for more details.
+
+### Other Platforms
+
+The template works with minimal or no configuration changes on:
 - Fly.io
 - Railway
-- Heroku (with minor adjustments)
-- Any modern hosting platform
+- Heroku
+- Any platform supporting Rails 8 and PostgreSQL
 
 ## Differences from Original
 
 This is an enhanced version of the original firstdraft template with:
-- Updated gems (amazing_print instead of awesome_print, annotaterb instead of annotate, dotenv instead of dotenv-rails)
-- Additional testing tools (SimpleCov, WebMock, Shoulda Matchers, Faker)
-- Full linting stack (Prettier, ESLint, Stylelint, erb_lint)
-- Security tools (bundler-audit)
-- Performance tools (goldiloader, rack-mini-profiler)
-- Modern production configuration (generic instead of Heroku-specific)
-- Comprehensive documentation
+- **Interactive Customization**: Choose which tools to include or use sensible defaults
+- **Updated Gems**: amazing_print, annotaterb, dotenv (replacing deprecated versions)
+- **Testing Tools**: SimpleCov, WebMock, Shoulda Matchers, Faker
+- **Linting Stack**: Prettier, ESLint, Stylelint, erb_lint (optional)
+- **Security Tools**: Brakeman, bundler-audit
+- **Performance Tools**: Goldiloader, rack-mini-profiler, Skylight
+- **Monitoring & Analytics**: Error monitoring (Rollbar/Honeybadger), Ahoy + Blazer
+- **Database Flexibility**: Single vs. multi-database setup, UUID support
+- **Deployment Options**: Render.com-specific configuration available
+- **Modern Production Configuration**: Generic setup for any platform
+- **Comprehensive Documentation**: Detailed README and contributing guidelines
 
 ## Contributing
 

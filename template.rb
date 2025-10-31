@@ -479,6 +479,28 @@ after_bundle do
   git add: "-A"
   git commit: "-m 'Configure generators'"
 
+  # === SOLID QUEUE DEVELOPMENT CONFIGURATION ===
+
+  # Add SolidQueue worker to Procfile.dev if it exists (for apps using bin/dev with asset compilation)
+  if File.exist?("Procfile.dev")
+    say "Adding SolidQueue worker to Procfile.dev...", :cyan
+    append_file "Procfile.dev", "jobs: bundle exec rake solid_queue:start\n"
+
+    # Configure development environment to use SolidQueue
+    inject_into_file "config/environments/development.rb",
+      before: "end\n" do
+      <<-RUBY
+
+  # Use SolidQueue for background jobs in development
+  # This matches production behavior and helps catch job-related issues early
+  config.active_job.queue_adapter = :solid_queue
+      RUBY
+    end
+
+    git add: "-A"
+    git commit: "-m 'Configure SolidQueue for development with Procfile.dev'"
+  end
+
   # === GOLDILOADER CONFIGURATION (if enabled) ===
 
   if performance_options[:goldiloader]

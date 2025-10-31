@@ -139,9 +139,11 @@ After creating your app, these commands are available:
 
 ### Development
 ```bash
-bin/dev                        # Start development server
+bin/dev                        # Start development server (includes web, JS/CSS compilation, and SolidQueue worker)
 rails console                  # Enhanced console with Pry
 ```
+
+**Note:** When using `bin/dev` (apps with JavaScript/CSS compilation), the template automatically configures SolidQueue to run in development, matching production behavior and helping catch job-related issues early.
 
 ### Testing
 ```bash
@@ -184,9 +186,19 @@ Visit `/blazer` for analytics dashboard (if Ahoy + Blazer enabled)
 
 ## Background Jobs
 
-The template uses Rails 8's default Solid Queue for background job processing. For high-volume applications that need Redis-backed processing, see:
-- [Solid Queue vs Sidekiq Comparison](https://medium.com/@rohitmuk1985/choosing-the-right-background-job-processor-in-rails-solid-queue-vs-sidekiq-ac3195635adb)
-- [Migration Guide from Sidekiq](https://www.bigbinary.com/blog/migrating-to-solid-queue-from-sidekiq)
+The template uses Rails 8's default Solid Queue for background job processing.
+
+### Development
+- When using `bin/dev` (apps with JS/CSS compilation), SolidQueue runs automatically as a worker process
+- Development environment is configured to use `:solid_queue` adapter
+- This matches production behavior and helps catch job-related issues early
+
+### Production
+- SolidQueue uses database-backed job storage (same database as your app data)
+- Can optionally run as separate worker service (e.g., on Render.com) or as Puma plugin
+- For high-volume applications needing Redis-backed processing, see:
+  - [Solid Queue vs Sidekiq Comparison](https://medium.com/@rohitmuk1985/choosing-the-right-background-job-processor-in-rails-solid-queue-vs-sidekiq-ac3195635adb)
+  - [Migration Guide from Sidekiq](https://www.bigbinary.com/blog/migrating-to-solid-queue-from-sidekiq)
 
 ## Deployment
 

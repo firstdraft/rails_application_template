@@ -620,26 +620,32 @@ after_bundle do
   # === UUID CONFIGURATION (if selected) ===
 
   if db_options[:use_uuid]
-    create_file "db/migrate/#{Time.now.utc.strftime("%Y%m%d%H%M%S")}_enable_extension_for_uuid.rb", <<~RUBY
-      class EnableExtensionForUuid < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
-        def change
-          enable_extension 'pgcrypto'
-        end
-      end
-    RUBY
-
-    rails_command("db:migrate")
+    # Assume PostgreSQL 18+ which has native uuidv7() support
+    # No need to enable pgcrypto extension
 
     insert_into_file "config/application.rb",
       "      g.orm :active_record, primary_key_type: :uuid\n",
       after: "    config.generators do |g|\n"
 
-    inject_into_class "app/models/application_record.rb",
-      "ApplicationRecord",
-      "  self.implicit_order_column = \"created_at\"\n\n"
+    # Configure Rails to use uuidv7() as the default for :uuid primary keys
+    initializer "postgresql_uuid_v7.rb", <<~RUBY
+      # Configure PostgreSQL to use native uuidv7() by default for UUID primary keys
+      # This requires PostgreSQL 18+
+      ActiveSupport.on_load(:active_record) do
+        module PostgreSQLUUIDv7
+          def initialize_type_map(m = type_map)
+            super
+            # Override the default for uuid types to use the native uuidv7() function
+            m.register_type "uuid", ActiveRecord::ConnectionAdapters::PostgreSQL::OID::Uuid.new(default: "uuidv7()")
+          end
+        end
+
+        ActiveRecord::ConnectionAdapters::PostgreSQLAdapter.prepend(PostgreSQLUUIDv7)
+      end
+    RUBY
 
     git add: "-A"
-    git commit: "-m 'Configure UUID primary keys'"
+    git commit: "-m 'Configure UUID v7 primary keys'"
   end
 
   # === RSPEC SETUP ===
@@ -1368,97 +1374,97 @@ after_bundle do
   # README (overwrite the default Rails README)
   remove_file "README.md"
   create_file "README.md", <<~MARKDOWN
-    # #{app_name.humanize}
+# #{app_name.humanize}
 
-    ## Requirements
+## Requirements
 
-    - Ruby #{RUBY_VERSION}
-    - PostgreSQL
-    - Node.js >= 20.0.0
-    - Yarn
+- Ruby #{RUBY_VERSION}
+- PostgreSQL
+- Node.js >= 20.0.0
+- Yarn
 
-    ## Setup
+## Setup
 
-    1. Clone the repository
-    2. Install dependencies:
-       ```bash
-       bundle install
-       yarn install
-       ```
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   bundle install
+   yarn install
+   ```
 
-    3. Setup database:
-       ```bash
-       rails db:create
-       rails db:migrate
-       rails db:seed
-       ```
+3. Setup database:
+   ```bash
+   rails db:create
+   rails db:migrate
+   rails db:seed
+   ```
 
-    4. Copy environment variables:
-       ```bash
-       cp .env.example .env
-       ```
-       Edit `.env` with your configuration
+4. Copy environment variables:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` with your configuration
 
-    ## Development
+## Development
 
-    Start the development server:
-    ```bash
-    bin/dev
-    ```
+Start the development server:
+```bash
+bin/dev
+```
 
-    ## Testing
+## Testing
 
-    Run the test suite:
-    ```bash
-    bundle exec rspec
-    ```#{testing_section}
+Run the test suite:
+```bash
+bundle exec rspec
+```#{testing_section}
 
-    ## Code Quality
+## Code Quality
 
-    Ruby linting:
-    ```bash
-    bundle exec standardrb
-    bundle exec standardrb --fix
-    ```
+Ruby linting:
+```bash
+bundle exec standardrb
+bundle exec standardrb --fix
+```
 
-    HTML+ERB analysis:
-    ```bash
-    bundle exec herb analyze .
-    bundle exec herb parse app/views/path/to/file.html.erb
-    ```#{linting_section}
+HTML+ERB analysis:
+```bash
+bundle exec herb analyze .
+bundle exec herb parse app/views/path/to/file.html.erb
+```#{linting_section}
 
-    Security scanning:
-    ```bash
-    #{security_commands.join("\n")}
-    ```
+Security scanning:
+```bash
+#{security_commands.join("\n")}
+```
 
-    ## Performance & N+1 Prevention
+## Performance & N+1 Prevention
 
-    This app uses a two-pronged approach to prevent N+1 queries:
+This app uses a two-pronged approach to prevent N+1 queries:
 
-    ### Goldiloader (Prevention)
-    #{"Automatically eager loads associations when accessed to prevent N+1 queries from occurring." if performance_options[:goldiloader]}
-    #{"- Works in all environments (development, test, production)" if performance_options[:goldiloader]}
-    #{"- Disable for specific associations: `has_many :posts, -> { auto_include(false) }`" if performance_options[:goldiloader]}
-    #{"- Disable for code blocks: `Goldiloader.disabled { ... }`" if performance_options[:goldiloader]}
-    #{"Not included - enable in template options to automatically prevent N+1 queries." unless performance_options[:goldiloader]}
+### Goldiloader (Prevention)
+#{"Automatically eager loads associations when accessed to prevent N+1 queries from occurring." if performance_options[:goldiloader]}
+#{"- Works in all environments (development, test, production)" if performance_options[:goldiloader]}
+#{"- Disable for specific associations: `has_many :posts, -> { auto_include(false) }`" if performance_options[:goldiloader]}
+#{"- Disable for code blocks: `Goldiloader.disabled { ... }`" if performance_options[:goldiloader]}
+#{"Not included - enable in template options to automatically prevent N+1 queries." unless performance_options[:goldiloader]}
 
-    ### Bullet (Detection)
-    - Detects N+1 queries and suggests fixes in development and test
-    - Logs to server console and displays in HTML footer
-    - Unused eager loading detection is disabled to work well with Goldiloader
-    - View N+1 warnings in:
-      - Browser footer (development only)
-      - Rails server log
-      - Browser console
+### Bullet (Detection)
+- Detects N+1 queries and suggests fixes in development and test
+- Logs to server console and displays in HTML footer
+- Unused eager loading detection is disabled to work well with Goldiloader
+- View N+1 warnings in:
+  - Browser footer (development only)
+  - Rails server log
+  - Browser console
 
-    ## Background Jobs
+## Background Jobs
 
-    This app uses Solid Queue (Rails 8 default) for background job processing.
+This app uses Solid Queue (Rails 8 default) for background job processing.
 
-    ## Documentation
+## Documentation
 
-    #{doc_commands.join("\n")}
+#{doc_commands.join("\n")}
 #{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}#{render_deployment_section}
   MARKDOWN
 

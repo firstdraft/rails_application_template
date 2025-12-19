@@ -27,9 +27,9 @@ say "  • Pry, Better Errors, Amazing Print - Debugging"
 say "  • Dotenv - Environment management"
 
 say "\nDefault Optional Tools:", :green
-say "  ✅ SimpleCov - Code coverage"
+say "  ❌ SimpleCov - Code coverage"
 say "  ✅ Shoulda Matchers - One-liner tests"
-say "  ✅ Faker - Test data generation"
+say "  ❌ Faker - Test data generation"
 say "  ❌ WebMock - HTTP stubbing (often not needed)"
 say "  ✅ Goldiloader - Auto N+1 prevention"
 say "  ✅ rack-mini-profiler - Development performance bar"
@@ -39,11 +39,12 @@ say "  ✅ Rails ERD - Entity diagrams"
 say "  ❌ rails_db - Database web UI (security concern)"
 say "  ✅ bundler-audit - Vulnerability scanning"
 say "  ✅ Rollbar - Error tracking (default choice)"
-say "  ✅ Bootstrap overrides - Custom Sass variables file"
-say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
-say "  ❌ UUID primary keys - Use UUIDs instead of integers"
+say "  ❌ Bootstrap overrides - Custom Sass variables file"
+say "  ✅ Full JS/CSS linting - Prettier, ESLint, Stylelint"
+say "  ✅ UUID primary keys - Use UUIDs (v7) instead of integers"
 say "  ❌ Multi-database setup - Rails 8 separate databases (single DB is simpler for deployment)"
-say "  ❌ Render.com deployment - Build script and render.yaml blueprint"
+say "  ✅ Render.com deployment - Build script and render.yaml blueprint"
+say "  ✅ Separate worker service - Run Solid Queue independently on Render"
 
 say "\n"
 customize = yes?("Would you like to customize these options? (y/n)")
@@ -56,33 +57,33 @@ if customize
   # Testing preferences
   testing_options = {}
   say "\nTesting Tools:", :yellow
-  testing_options[:simplecov] = yes?("  Include SimpleCov for code coverage? (y/n)")
-  testing_options[:shoulda] = yes?("  Include Shoulda Matchers for one-liner tests? (y/n)")
-  testing_options[:faker] = yes?("  Include Faker for test data generation? (y/n)")
-  testing_options[:webmock] = yes?("  Include WebMock for HTTP request stubbing? (y/n)")
+  testing_options[:simplecov] = yes?("  Include SimpleCov for code coverage? (y/n)", default: false)
+  testing_options[:shoulda] = yes?("  Include Shoulda Matchers for one-liner tests? (y/n)", default: true)
+  testing_options[:faker] = yes?("  Include Faker for test data generation? (y/n)", default: false)
+  testing_options[:webmock] = yes?("  Include WebMock for HTTP request stubbing? (y/n)", default: false)
 
   # Performance monitoring
   performance_options = {}
   say "\nPerformance Tools:", :yellow
-  performance_options[:goldiloader] = yes?("  Include Goldiloader for automatic N+1 prevention? (y/n)")
-  performance_options[:rack_profiler] = yes?("  Include rack-mini-profiler for development performance bar? (y/n)")
-  performance_options[:skylight] = yes?("  Include Skylight for production performance monitoring? (y/n)")
+  performance_options[:goldiloader] = yes?("  Include Goldiloader for automatic N+1 prevention? (y/n)", default: true)
+  performance_options[:rack_profiler] = yes?("  Include rack-mini-profiler for development performance bar? (y/n)", default: true)
+  performance_options[:skylight] = yes?("  Include Skylight for production performance monitoring? (y/n)", default: true)
 
   # Analytics
   analytics_options = {}
   say "\nAnalytics:", :yellow
-  analytics_options[:ahoy_blazer] = yes?("  Include Ahoy + Blazer for analytics tracking and dashboard? (y/n)")
+  analytics_options[:ahoy_blazer] = yes?("  Include Ahoy + Blazer for analytics tracking and dashboard? (y/n)", default: true)
 
   # Documentation tools
   doc_options = {}
   say "\nDocumentation Tools:", :yellow
-  doc_options[:rails_erd] = yes?("  Include Rails ERD for entity relationship diagrams? (y/n)")
-  doc_options[:rails_db] = yes?("  Include rails_db for web-based database UI? (y/n)")
+  doc_options[:rails_erd] = yes?("  Include Rails ERD for entity relationship diagrams? (y/n)", default: true)
+  doc_options[:rails_db] = yes?("  Include rails_db for web-based database UI? (y/n)", default: false)
 
   # Security & safety
   security_options = {}
   say "\nSecurity & Safety Tools:", :yellow
-  security_options[:bundler_audit] = yes?("  Include bundler-audit for vulnerability scanning? (y/n)")
+  security_options[:bundler_audit] = yes?("  Include bundler-audit for vulnerability scanning? (y/n)", default: true)
 
   # Error monitoring
   monitoring_options = {}
@@ -104,30 +105,30 @@ if customize
   # Frontend tools
   frontend_options = {}
   say "\nFrontend Tools:", :yellow
-  frontend_options[:bootstrap_overrides] = yes?("  Include Bootstrap overrides file for easy customization? (y/n)")
-  frontend_options[:full_linting] = yes?("  Include full JS/CSS linting stack (Prettier, ESLint, Stylelint)? (y/n)")
+  frontend_options[:bootstrap_overrides] = yes?("  Include Bootstrap overrides file for easy customization? (y/n)", default: false)
+  frontend_options[:full_linting] = yes?("  Include full JS/CSS linting stack (Prettier, ESLint, Stylelint)? (y/n)", default: true)
 
   # Database configuration
   db_options = {}
   say "\nDatabase Configuration:", :yellow
-  db_options[:use_uuid] = yes?("  Use UUIDs for primary keys instead of integers? (y/n)")
-  db_options[:multi_database] = yes?("  Use Rails 8 multi-database setup (separate DBs for cache/queue/cable)? (y/n)")
+  db_options[:use_uuid] = yes?("  Use UUIDs for primary keys instead of integers? (y/n)", default: true)
+  db_options[:multi_database] = yes?("  Use Rails 8 multi-database setup (separate DBs for cache/queue/cable)? (y/n)", default: false)
 
   # Deployment configuration
   render_options = {}
   say "\nDeployment:", :yellow
-  render_options[:enabled] = yes?("  Configure for Render.com deployment (build script + render.yaml)? (y/n)")
+  render_options[:enabled] = yes?("  Configure for Render.com deployment (build script + render.yaml)? (y/n)", default: true)
   if render_options[:enabled]
-    render_options[:separate_worker] = yes?("  Run Solid Queue as separate worker service? (y/n)")
+    render_options[:separate_worker] = yes?("  Run Solid Queue as separate worker service? (y/n)", default: true)
   else
     render_options[:separate_worker] = false
   end
 else
   # Use default configuration
   testing_options = {
-    simplecov: true,
+    simplecov: false,
     shoulda: true,
-    faker: true,
+    faker: false,
     webmock: false
   }
 
@@ -155,18 +156,18 @@ else
   }
 
   frontend_options = {
-    bootstrap_overrides: true,
-    full_linting: false
+    bootstrap_overrides: false,
+    full_linting: true
   }
 
   db_options = {
-    use_uuid: false,
+    use_uuid: true,
     multi_database: false
   }
 
   render_options = {
-    enabled: false,
-    separate_worker: false
+    enabled: true,
+    separate_worker: true
   }
 
   say "\n✅ Using default configuration!", :green
@@ -633,10 +634,8 @@ after_bundle do
       # This requires PostgreSQL 18+
       ActiveSupport.on_load(:active_record) do
         module PostgreSQLUUIDv7
-          def initialize_type_map(m = type_map)
-            super
-            # Override the default for uuid types to use the native uuidv7() function
-            m.register_type "uuid", ActiveRecord::ConnectionAdapters::PostgreSQL::OID::Uuid.new(default: "uuidv7()")
+          def native_database_types
+            super.merge(uuid: { name: "uuid", default: "uuidv7()" })
           end
         end
 

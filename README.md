@@ -24,16 +24,16 @@ A comprehensive Rails application template with modern best practices, testing t
 - **Capybara + Selenium** for system testing
 - **Factory Bot** for test factories
 - **Shoulda Matchers** for one-liner tests (optional, default: enabled)
-- **Faker** for test data generation (optional, default: enabled)
-- **SimpleCov** for code coverage reporting (optional, default: enabled)
+- **Faker** for test data generation (optional, default: disabled)
+- **SimpleCov** for code coverage reporting (optional, default: disabled)
 - **WebMock** for HTTP request stubbing (optional, default: disabled)
 - **action_dispatch-testing-integration-capybara** - Enhanced Capybara integration
 
 ### Code Quality & Linting
 - **StandardRB + Standard-Rails** for Ruby
-- **Prettier** for JavaScript/CSS formatting (optional, default: disabled)
-- **ESLint** with Thoughtbot configuration (optional, default: disabled)
-- **Stylelint** with Thoughtbot configuration (optional, default: disabled)
+- **Prettier** for JavaScript/CSS formatting (optional, default: enabled)
+- **ESLint** with Thoughtbot configuration (optional, default: enabled)
+- **Stylelint** with Thoughtbot configuration (optional, default: enabled)
 - **erb_lint + better_html** for ERB template linting
 
 ### Documentation & Visualization
@@ -55,7 +55,7 @@ A comprehensive Rails application template with modern best practices, testing t
 - **Force SSL** in production
 - **Enhanced production logging**
 - **Database Options**:
-  - Optional UUID primary keys
+  - **UUID primary keys (v7)** by default
   - Optional Rails 8 multi-database setup (separate databases for cache/queue/cable) - defaults to single database for simpler deployment
 
 ### Project Files
@@ -204,13 +204,13 @@ The template uses Rails 8's default Solid Queue for background job processing.
 
 This template creates apps configured for generic production deployment, suitable for any modern hosting platform.
 
-### Render.com (Optional)
+### Render.com (Default)
 
-When enabled during setup, the template generates Render.com-specific configuration:
+The template generates Render.com-specific configuration by default:
 - `bin/render-build.sh` - Automated build script for bundle, migrations, and assets
 - `render.yaml` - Blueprint file with web service and database configuration
 - Health check endpoint (`/up`) configuration
-- Choice between Solid Queue as a Puma plugin or separate worker service
+- Choice between Solid Queue as a Puma plugin or separate worker service (default: separate worker)
 - Environment variable guidance for `RAILS_MASTER_KEY` and `WEB_CONCURRENCY`
 
 See [Render's Rails 8 deployment guide](https://render.com/docs/deploy-rails-8) for more details.

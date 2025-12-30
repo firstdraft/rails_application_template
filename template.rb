@@ -366,26 +366,24 @@ after_bundle do
         url: <%= ENV["DATABASE_URL"] %>
     YAML
 
-    # Update Solid Cache to use the primary database
-    if File.exist?("config/solid_cache.yml")
-      gsub_file "config/solid_cache.yml",
-        /database: cache/,
-        "database: primary"
+    # Remove multi-database references from Solid Cache config
+    if File.exist?("config/cache.yml")
+      gsub_file "config/cache.yml",
+        /^\s*database: cache\n/,
+        ""
     end
 
-    # Update Solid Queue to use the primary database
-    if File.exist?("config/solid_queue.yml")
-      gsub_file "config/solid_queue.yml",
-        /database: queue/,
-        "database: primary"
+    # Remove multi-database references from Solid Cable config
+    if File.exist?("config/cable.yml")
+      gsub_file "config/cable.yml",
+        /\s*connects_to:\n\s*database:\n\s*writing: cable\n/,
+        "\n"
     end
 
-    # Update Solid Cable to use the primary database
-    if File.exist?("config/solid_cable.yml")
-      gsub_file "config/solid_cable.yml",
-        /database: cable/,
-        "database: primary"
-    end
+    # Remove multi-database references from production environment
+    gsub_file "config/environments/production.rb",
+      /\s*config\.solid_queue\.connects_to = \{ database: \{ writing: :queue \} \}\n/,
+      "\n"
 
     # Convert Solid schema files into regular migrations
     # This ensures all tables are created in the primary database

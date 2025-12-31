@@ -577,19 +577,19 @@ after_bundle do
     if render_options[:separate_worker]
       render_yaml_content += <<~YAML
 
-        - type: worker
-          name: #{app_name}-worker
-          runtime: ruby
-          plan: free
-          buildCommand: "bundle install"
-          startCommand: "bundle exec rake solid_queue:start"
-          envVars:
-            - key: DATABASE_URL
-              fromDatabase:
-                name: #{app_name}-db
-                property: connectionString
-            - key: RAILS_MASTER_KEY
-              sync: false
+          - type: worker
+            name: #{app_name}-worker
+            runtime: ruby
+            plan: free
+            buildCommand: "bundle install"
+            startCommand: "bundle exec rake solid_queue:start"
+            envVars:
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: #{app_name}-db
+                  property: connectionString
+              - key: RAILS_MASTER_KEY
+                sync: false
       YAML
     end
 

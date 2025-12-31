@@ -124,6 +124,17 @@ if customize
     tier_choice = ask("    Select tier (1-2):", limited_to: %w[1 2], default: "1")
     render_options[:free_tier] = (tier_choice == "1")
 
+    say "\n  Database Provider:", :cyan
+    if render_options[:free_tier]
+      say "    → Using Supabase (recommended for free tier - no 90-day expiration)", :green
+      render_options[:database_provider] = "supabase"
+    else
+      say "    1. Render Postgres (integrated, simpler setup)"
+      say "    2. Supabase (more features: real-time, auth, storage, generous free tier)"
+      db_choice = ask("    Select option (1-2):", limited_to: %w[1 2], default: "1")
+      render_options[:database_provider] = (db_choice == "1") ? "render" : "supabase"
+    end
+
     say "\n  Background Jobs:", :cyan
     say "    1. Run in web process (simpler, shares memory - recommended for free tier)"
     say "    2. Separate worker service (isolated resources, costs more on paid tier)"
@@ -141,6 +152,7 @@ if customize
   else
     render_options[:separate_worker] = false
     render_options[:free_tier] = true
+    render_options[:database_provider] = "supabase"
     render_options[:domain] = nil
     render_options[:include_www] = false
   end
@@ -190,6 +202,7 @@ else
     enabled: false,
     separate_worker: false,
     free_tier: true,
+    database_provider: "supabase",
     domain: nil,
     include_www: false
   }
@@ -562,6 +575,7 @@ after_bundle do
     web_concurrency = render_options[:free_tier] ? 0 : 2
     db_plan = render_options[:free_tier] ? "free" : "starter"
     service_plan = render_options[:free_tier] ? "free" : "starter"
+    using_supabase = render_options[:database_provider] == "supabase"
 
     # Create bin/render-build.sh (NO db:migrate - that goes in preDeployCommand)
     create_file "bin/render-build.sh", <<~BASH
@@ -578,17 +592,19 @@ after_bundle do
     chmod "bin/render-build.sh", 0755
 
     # Build render.yaml programmatically to avoid indentation bugs
-    render_config = {
-      "databases" => [
+    render_config = {"services" => []}
+
+    # Only add Render Postgres if not using Supabase
+    unless using_supabase
+      render_config["databases"] = [
         {
           "name" => "#{app_name}-db",
           "databaseName" => "#{app_name}_production",
           "user" => app_name,
           "plan" => db_plan
         }
-      ],
-      "services" => []
-    }
+      ]
+    end
 
     # Web service configuration
     web_service = {
@@ -600,19 +616,28 @@ after_bundle do
       "preDeployCommand" => "bundle exec rake db:migrate",
       "startCommand" => "bundle exec puma -C config/puma.rb",
       "healthCheckPath" => "/up",
-      "envVars" => [
-        {
-          "key" => "DATABASE_URL",
-          "fromDatabase" => {
-            "name" => "#{app_name}-db",
-            "property" => "connectionString"
-          }
-        },
-        {"key" => "RAILS_MASTER_KEY", "sync" => false},
-        {"key" => "WEB_CONCURRENCY", "value" => web_concurrency.to_s},
-        {"key" => "NODE_ENV", "value" => "production"}
-      ]
+      "envVars" => []
     }
+
+    # Database URL configuration depends on provider
+    if using_supabase
+      # Supabase: DATABASE_URL must be entered manually in Render dashboard
+      web_service["envVars"] << {"key" => "DATABASE_URL", "sync" => false}
+    else
+      # Render Postgres: auto-link to provisioned database
+      web_service["envVars"] << {
+        "key" => "DATABASE_URL",
+        "fromDatabase" => {
+          "name" => "#{app_name}-db",
+          "property" => "connectionString"
+        }
+      }
+    end
+
+    # Add remaining env vars
+    web_service["envVars"] << {"key" => "RAILS_MASTER_KEY", "sync" => false}
+    web_service["envVars"] << {"key" => "WEB_CONCURRENCY", "value" => web_concurrency.to_s}
+    web_service["envVars"] << {"key" => "NODE_ENV", "value" => "production"}
 
     # Add SOLID_QUEUE_IN_PUMA env var if not using separate worker
     unless render_options[:separate_worker]
@@ -637,17 +662,23 @@ after_bundle do
         "plan" => service_plan,
         "buildCommand" => "bundle install",
         "startCommand" => "bundle exec rake solid_queue:start",
-        "envVars" => [
-          {
-            "key" => "DATABASE_URL",
-            "fromDatabase" => {
-              "name" => "#{app_name}-db",
-              "property" => "connectionString"
-            }
-          },
-          {"key" => "RAILS_MASTER_KEY", "sync" => false}
-        ]
+        "envVars" => []
       }
+
+      # Database URL for worker
+      if using_supabase
+        worker_service["envVars"] << {"key" => "DATABASE_URL", "sync" => false}
+      else
+        worker_service["envVars"] << {
+          "key" => "DATABASE_URL",
+          "fromDatabase" => {
+            "name" => "#{app_name}-db",
+            "property" => "connectionString"
+          }
+        }
+      end
+
+      worker_service["envVars"] << {"key" => "RAILS_MASTER_KEY", "sync" => false}
       render_config["services"] << worker_service
     end
 
@@ -703,6 +734,16 @@ after_bundle do
 
       - [ ] Push code to GitHub/GitLab
       - [ ] Create Render account at https://render.com
+    MARKDOWN
+
+    if using_supabase
+      checklist_content += <<~MARKDOWN
+        - [ ] Create Supabase account and project at https://supabase.com
+        - [ ] Get your database connection string (see Supabase Setup below)
+      MARKDOWN
+    end
+
+    checklist_content += <<~MARKDOWN
       - [ ] Connect your repository to Render (Render will auto-detect render.yaml)
 
       ## Environment Variables (set in Render Dashboard)
@@ -711,6 +752,15 @@ after_bundle do
 
       - [ ] `RAILS_MASTER_KEY` - Copy the contents of `config/master.key`
             (This file is gitignored for security - you must copy it manually)
+    MARKDOWN
+
+    if using_supabase
+      checklist_content += <<~MARKDOWN
+        - [ ] `DATABASE_URL` - Your Supabase connection string (see below)
+      MARKDOWN
+    end
+
+    checklist_content += <<~MARKDOWN
 
       ## After Deploy
 
@@ -718,6 +768,55 @@ after_bundle do
       - [ ] Check service logs for any errors
       - [ ] Test your application functionality
     MARKDOWN
+
+    if using_supabase
+      checklist_content += <<~MARKDOWN
+
+        ## Supabase Database Setup
+
+        ### 1. Create a Supabase Project
+
+        1. Go to https://supabase.com and sign in
+        2. Click "New Project"
+        3. Choose a name, password, and region (pick one close to your Render region)
+        4. Wait for the project to be created (~2 minutes)
+
+        ### 2. Get Your Connection String
+
+        1. In your Supabase project, go to **Settings** → **Database**
+        2. Scroll to **Connection string** section
+        3. Select **URI** tab
+        4. Copy the connection string (it looks like):
+           ```
+           postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+           ```
+
+        ### 3. Choose the Right Connection Mode
+
+        Supabase offers two connection modes:
+
+        | Mode | Port | Best For |
+        |------|------|----------|
+        | **Transaction** (recommended) | 6543 | Web apps, Rails |
+        | Session | 5432 | Long-running connections |
+
+        **Use Transaction mode (port 6543)** for Rails applications.
+
+        ### 4. Add to Render Dashboard
+
+        1. In Render, go to your web service → **Environment**
+        2. Add `DATABASE_URL` with your Supabase connection string
+        3. Replace `[YOUR-PASSWORD]` with your database password
+        4. If you have a worker service, add the same `DATABASE_URL` there
+
+        ### Important Notes
+
+        - **Password**: Use the password you set when creating the Supabase project
+        - **SSL**: Supabase requires SSL, which Rails handles automatically
+        - **Free Tier**: Supabase free tier includes 500MB storage, no expiration
+        - **Pooling**: Transaction pooler is already configured in the connection string
+      MARKDOWN
+    end
 
     if render_options[:domain]
       checklist_content += <<~MARKDOWN
@@ -746,6 +845,8 @@ after_bundle do
       MARKDOWN
     end
 
+    db_provider_display = using_supabase ? "Supabase (external)" : "Render Postgres (#{db_plan})"
+
     checklist_content += <<~MARKDOWN
 
       ## Configuration Summary
@@ -753,9 +854,9 @@ after_bundle do
       | Setting | Value |
       |---------|-------|
       | Tier | #{render_options[:free_tier] ? "Free" : "Paid"} |
+      | Database | #{db_provider_display} |
       | WEB_CONCURRENCY | #{web_concurrency} #{render_options[:free_tier] ? "(single process, threaded - optimized for 512MB)" : "(multiple workers)"} |
       | Background Jobs | #{render_options[:separate_worker] ? "Separate worker service" : "Puma plugin (in web process)"} |
-      | Database Plan | #{db_plan} |
       #{render_options[:domain] ? "| Custom Domain | #{render_options[:domain]} |" : ""}
 
       ## Useful Commands
@@ -1533,12 +1634,42 @@ after_bundle do
     tier_info = render_options[:free_tier] ?
       "Free tier (512MB RAM, WEB_CONCURRENCY=0 for single-process threaded mode)" :
       "Paid tier (WEB_CONCURRENCY=2 for multi-process mode)"
+    db_info = render_options[:database_provider] == "supabase" ?
+      "Supabase (external, no 90-day expiration)" :
+      "Render Postgres (integrated)"
     worker_info = render_options[:separate_worker] ?
       "Separate worker service for better resource isolation" :
       "Puma plugin (runs in web process, simpler setup)"
     domain_info = render_options[:domain] ?
       "Custom domain: `#{render_options[:domain]}`#{render_options[:include_www] ? " with www redirect" : ""}" :
       "No custom domain configured (uses .onrender.com subdomain)"
+
+    quick_deploy_steps = if render_options[:database_provider] == "supabase"
+      <<~STEPS
+        1. Create a Supabase project at https://supabase.com
+        2. Push your code to GitHub
+        3. Connect your repository to Render
+        4. Render will automatically detect the `render.yaml` blueprint
+        5. Set environment variables in the Render dashboard:
+           - `RAILS_MASTER_KEY` - from `config/master.key`
+           - `DATABASE_URL` - from Supabase (Settings → Database → URI)
+      STEPS
+    else
+      <<~STEPS
+        1. Push your code to GitHub
+        2. Connect your repository to Render
+        3. Render will automatically detect the `render.yaml` blueprint
+        4. Set the `RAILS_MASTER_KEY` environment variable in the Render dashboard:
+           - Find your key in `config/master.key`
+           - Add it as an environment variable (marked `sync: false` in blueprint)
+      STEPS
+    end
+
+    database_info = if render_options[:database_provider] == "supabase"
+      "**Database**: Supabase PostgreSQL (configure `DATABASE_URL` manually)"
+    else
+      "**Database**: Render PostgreSQL (auto-provisioned)"
+    end
 
     <<~SECTION
 
@@ -1552,24 +1683,20 @@ after_bundle do
     | Setting | Value |
     |---------|-------|
     | Tier | #{tier_info} |
+    | Database | #{db_info} |
     | Background Jobs | #{worker_info} |
     | Domain | #{domain_info} |
 
     ### Quick Deploy
 
-    1. Push your code to GitHub
-    2. Connect your repository to Render
-    3. Render will automatically detect the `render.yaml` blueprint
-    4. Set the `RAILS_MASTER_KEY` environment variable in the Render dashboard:
-       - Find your key in `config/master.key`
-       - Add it as an environment variable (marked `sync: false` in blueprint)
-    #{render_options[:domain] ? "\n5. Configure DNS records (see `RENDER_DEPLOYMENT.md` for details)" : ""}
+    #{quick_deploy_steps.strip}
+    #{render_options[:domain] ? "\n6. Configure DNS records (see `RENDER_DEPLOYMENT.md` for details)" : ""}
 
     ### What's Configured
 
     - **Build script**: `bin/render-build.sh` handles dependencies and assets
     - **Migrations**: Run via `preDeployCommand` (after build, before start)
-    - **Database**: PostgreSQL database automatically provisioned
+    - #{database_info}
     - **Health checks**: Rails 8's `/up` endpoint for monitoring
     - **Environment**: `NODE_ENV=production` for optimized builds
 
@@ -1817,6 +1944,7 @@ after_bundle do
     say "  #{render_options[:enabled] ? '✅' : '❌'} Render.com configuration (build script + render.yaml)"
     if render_options[:enabled]
       say "    • Tier: #{render_options[:free_tier] ? 'Free (512MB, WEB_CONCURRENCY=0)' : 'Paid (WEB_CONCURRENCY=2)'}"
+      say "    • Database: #{render_options[:database_provider] == 'supabase' ? 'Supabase (external)' : 'Render Postgres'}"
       say "    • Background jobs: #{render_options[:separate_worker] ? 'Separate worker service' : 'Puma plugin (runs in web process)'}"
       say "    • Custom domain: #{render_options[:domain] || 'Not configured'}"
       say "    • Deployment checklist: RENDER_DEPLOYMENT.md"
@@ -1836,8 +1964,14 @@ after_bundle do
   if render_options[:enabled]
     say "\n  For Render.com deployment:", :yellow
     say "  4. Review RENDER_DEPLOYMENT.md for deployment checklist"
-    say "  5. Push to GitHub and connect to Render"
-    say "  6. Set RAILS_MASTER_KEY in Render Dashboard (from config/master.key)"
+    if render_options[:database_provider] == "supabase"
+      say "  5. Create Supabase project at https://supabase.com"
+      say "  6. Push to GitHub and connect to Render"
+      say "  7. Set RAILS_MASTER_KEY and DATABASE_URL in Render Dashboard"
+    else
+      say "  5. Push to GitHub and connect to Render"
+      say "  6. Set RAILS_MASTER_KEY in Render Dashboard (from config/master.key)"
+    end
   end
 
   # Display Blazer credentials if analytics was configured

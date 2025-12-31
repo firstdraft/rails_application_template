@@ -118,9 +118,31 @@ if customize
   say "\nDeployment:", :yellow
   render_options[:enabled] = yes?("  Configure for Render.com deployment (build script + render.yaml)? (y/n)")
   if render_options[:enabled]
-    render_options[:separate_worker] = yes?("  Run Solid Queue as separate worker service? (y/n)")
+    say "\n  Render.com Plan:", :cyan
+    say "    1. Free tier (512MB RAM - good for demos, small apps)"
+    say "    2. Starter/Paid tier (more resources, better performance)"
+    tier_choice = ask("    Select tier (1-2):", limited_to: %w[1 2], default: "1")
+    render_options[:free_tier] = (tier_choice == "1")
+
+    say "\n  Background Jobs:", :cyan
+    say "    1. Run in web process (simpler, shares memory - recommended for free tier)"
+    say "    2. Separate worker service (isolated resources, costs more on paid tier)"
+    job_choice = ask("    Select option (1-2):", limited_to: %w[1 2], default: "1")
+    render_options[:separate_worker] = (job_choice == "2")
+
+    say "\n  Custom Domain:", :cyan
+    if yes?("    Do you know your production domain? (y/n)")
+      render_options[:domain] = ask("    Enter domain (e.g., myapp.com):")
+      render_options[:include_www] = yes?("    Also configure www.#{render_options[:domain]}? (y/n)")
+    else
+      render_options[:domain] = nil
+      render_options[:include_www] = false
+    end
   else
     render_options[:separate_worker] = false
+    render_options[:free_tier] = true
+    render_options[:domain] = nil
+    render_options[:include_www] = false
   end
 else
   # Use default configuration
@@ -166,7 +188,10 @@ else
 
   render_options = {
     enabled: false,
-    separate_worker: false
+    separate_worker: false,
+    free_tier: true,
+    domain: nil,
+    include_www: false
   }
 
   say "\n✅ Using default configuration!", :green
@@ -529,16 +554,22 @@ after_bundle do
   # === RENDER.COM DEPLOYMENT CONFIGURATION (if selected) ===
 
   if render_options[:enabled]
+    require "yaml"
+
     say "Configuring for Render.com deployment...", :cyan
 
-    # Create bin/render-build.sh
+    # Determine settings based on tier
+    web_concurrency = render_options[:free_tier] ? 0 : 2
+    db_plan = render_options[:free_tier] ? "free" : "starter"
+    service_plan = render_options[:free_tier] ? "free" : "starter"
+
+    # Create bin/render-build.sh (NO db:migrate - that goes in preDeployCommand)
     create_file "bin/render-build.sh", <<~BASH
       #!/usr/bin/env bash
       # exit on error
       set -o errexit
 
       bundle install
-      bundle exec rake db:migrate
       bundle exec rake assets:precompile
       bundle exec rake assets:clean
     BASH
@@ -546,69 +577,226 @@ after_bundle do
     # Make script executable
     chmod "bin/render-build.sh", 0755
 
-    # Create render.yaml blueprint
-    render_yaml_content = <<~YAML
-      databases:
-        - name: #{app_name}-db
-          databaseName: #{app_name}_production
-          user: #{app_name}
-          plan: free
+    # Build render.yaml programmatically to avoid indentation bugs
+    render_config = {
+      "databases" => [
+        {
+          "name" => "#{app_name}-db",
+          "databaseName" => "#{app_name}_production",
+          "user" => app_name,
+          "plan" => db_plan
+        }
+      ],
+      "services" => []
+    }
 
-      services:
-        - type: web
-          name: #{app_name}-web
-          runtime: ruby
-          plan: free
-          buildCommand: "./bin/render-build.sh"
-          startCommand: "bundle exec puma -C config/puma.rb"
-          healthCheckPath: /up
-          envVars:
-            - key: DATABASE_URL
-              fromDatabase:
-                name: #{app_name}-db
-                property: connectionString
-            - key: RAILS_MASTER_KEY
-              sync: false
-            - key: WEB_CONCURRENCY
-              value: 2
-    YAML
+    # Web service configuration
+    web_service = {
+      "type" => "web",
+      "name" => "#{app_name}-web",
+      "runtime" => "ruby",
+      "plan" => service_plan,
+      "buildCommand" => "./bin/render-build.sh",
+      "preDeployCommand" => "bundle exec rake db:migrate",
+      "startCommand" => "bundle exec puma -C config/puma.rb",
+      "healthCheckPath" => "/up",
+      "envVars" => [
+        {
+          "key" => "DATABASE_URL",
+          "fromDatabase" => {
+            "name" => "#{app_name}-db",
+            "property" => "connectionString"
+          }
+        },
+        {"key" => "RAILS_MASTER_KEY", "sync" => false},
+        {"key" => "WEB_CONCURRENCY", "value" => web_concurrency.to_s},
+        {"key" => "NODE_ENV", "value" => "production"}
+      ]
+    }
+
+    # Add SOLID_QUEUE_IN_PUMA env var if not using separate worker
+    unless render_options[:separate_worker]
+      web_service["envVars"] << {"key" => "SOLID_QUEUE_IN_PUMA", "value" => "true"}
+    end
+
+    # Add custom domain if specified
+    if render_options[:domain]
+      domains = [render_options[:domain]]
+      domains << "www.#{render_options[:domain]}" if render_options[:include_www]
+      web_service["domains"] = domains
+    end
+
+    render_config["services"] << web_service
 
     # Add worker service if separate_worker is enabled
     if render_options[:separate_worker]
-      render_yaml_content += <<~YAML
+      worker_service = {
+        "type" => "worker",
+        "name" => "#{app_name}-worker",
+        "runtime" => "ruby",
+        "plan" => service_plan,
+        "buildCommand" => "bundle install",
+        "startCommand" => "bundle exec rake solid_queue:start",
+        "envVars" => [
+          {
+            "key" => "DATABASE_URL",
+            "fromDatabase" => {
+              "name" => "#{app_name}-db",
+              "property" => "connectionString"
+            }
+          },
+          {"key" => "RAILS_MASTER_KEY", "sync" => false}
+        ]
+      }
+      render_config["services"] << worker_service
+    end
 
-          - type: worker
-            name: #{app_name}-worker
-            runtime: ruby
-            plan: free
-            buildCommand: "bundle install"
-            startCommand: "bundle exec rake solid_queue:start"
-            envVars:
-              - key: DATABASE_URL
-                fromDatabase:
-                  name: #{app_name}-db
-                  property: connectionString
-              - key: RAILS_MASTER_KEY
-                sync: false
-      YAML
+    # Generate YAML and validate it
+    render_yaml_content = render_config.to_yaml
+
+    # Validate YAML before writing
+    begin
+      YAML.safe_load(render_yaml_content)
+    rescue Psych::SyntaxError => e
+      say "ERROR: Generated render.yaml is invalid: #{e.message}", :red
+      raise "Invalid YAML generated for render.yaml"
     end
 
     create_file "render.yaml", render_yaml_content
 
     # Configure Puma plugin for Solid Queue if not using separate worker
     unless render_options[:separate_worker]
-      # Add plugin to puma.rb
-      append_to_file "config/puma.rb", <<~RUBY
+      # Check if puma.rb already has the solid_queue plugin to avoid duplication
+      puma_content = File.read("config/puma.rb")
+      unless puma_content.include?("plugin :solid_queue")
+        append_to_file "config/puma.rb", <<~RUBY
 
-        # Use Solid Queue with Puma (runs background jobs in web process)
-        plugin :solid_queue
-      RUBY
+          # Run Solid Queue in Puma process (controlled by SOLID_QUEUE_IN_PUMA env var)
+          # This is used for Render.com deployments without a separate worker service
+          plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]
+        RUBY
+      end
 
       # Silence polling in development
       inject_into_file "config/environments/development.rb",
         "  # Silence Solid Queue polling logs in development\n  config.solid_queue.silence_polling = true\n\n",
         after: "Rails.application.configure do\n"
     end
+
+    # Move esbuild to dependencies (not devDependencies) for production builds
+    if File.exist?("package.json")
+      package_json = JSON.parse(File.read("package.json"))
+      if package_json.dig("devDependencies", "esbuild")
+        esbuild_version = package_json["devDependencies"].delete("esbuild")
+        package_json["dependencies"] ||= {}
+        package_json["dependencies"]["esbuild"] = esbuild_version
+        File.write("package.json", JSON.pretty_generate(package_json) + "\n")
+        say "Moved esbuild to dependencies for production builds", :green
+      end
+    end
+
+    # Generate deployment checklist
+    checklist_content = <<~MARKDOWN
+      # Render.com Deployment Checklist for #{app_name.humanize}
+
+      ## Before First Deploy
+
+      - [ ] Push code to GitHub/GitLab
+      - [ ] Create Render account at https://render.com
+      - [ ] Connect your repository to Render (Render will auto-detect render.yaml)
+
+      ## Environment Variables (set in Render Dashboard)
+
+      The following must be set manually in the Render Dashboard:
+
+      - [ ] `RAILS_MASTER_KEY` - Copy the contents of `config/master.key`
+            (This file is gitignored for security - you must copy it manually)
+
+      ## After Deploy
+
+      - [ ] Verify health check passes at `/up`
+      - [ ] Check service logs for any errors
+      - [ ] Test your application functionality
+    MARKDOWN
+
+    if render_options[:domain]
+      checklist_content += <<~MARKDOWN
+
+        ## Custom Domain Setup: #{render_options[:domain]}
+
+        Your render.yaml is pre-configured for `#{render_options[:domain]}`#{render_options[:include_www] ? " and `www.#{render_options[:domain]}`" : ""}.
+
+        ### DNS Configuration
+
+        Add these records at your domain registrar (e.g., Namecheap, GoDaddy, Cloudflare):
+
+        | Type | Name | Value |
+        |------|------|-------|
+        | CNAME | www | #{app_name}-web.onrender.com |
+        | CNAME or ALIAS | @ (root) | #{app_name}-web.onrender.com |
+
+        **Note:** Some registrars don't support CNAME/ALIAS for root domains.
+        Check Render's docs for alternative A record configuration.
+
+        ### After DNS Configuration
+
+        - [ ] Wait for DNS propagation (can take up to 48 hours, usually faster)
+        - [ ] Verify SSL certificate is automatically provisioned by Render
+        - [ ] Test both root domain and www (if configured)
+      MARKDOWN
+    end
+
+    checklist_content += <<~MARKDOWN
+
+      ## Configuration Summary
+
+      | Setting | Value |
+      |---------|-------|
+      | Tier | #{render_options[:free_tier] ? "Free" : "Paid"} |
+      | WEB_CONCURRENCY | #{web_concurrency} #{render_options[:free_tier] ? "(single process, threaded - optimized for 512MB)" : "(multiple workers)"} |
+      | Background Jobs | #{render_options[:separate_worker] ? "Separate worker service" : "Puma plugin (in web process)"} |
+      | Database Plan | #{db_plan} |
+      #{render_options[:domain] ? "| Custom Domain | #{render_options[:domain]} |" : ""}
+
+      ## Useful Commands
+
+      ```bash
+      # View logs
+      render logs --service #{app_name}-web
+
+      # SSH into service (paid plans only)
+      render ssh --service #{app_name}-web
+
+      # Restart service
+      render restart --service #{app_name}-web
+      ```
+
+      ## Troubleshooting
+
+      ### Build Failures
+      - Check that all gems install correctly
+      - Verify Node.js version compatibility
+      - Check asset compilation logs
+
+      ### Migration Failures
+      - Migrations run in preDeployCommand (after build, before start)
+      - Check DATABASE_URL is correctly set
+      - Verify database is accessible from web service
+
+      ### Memory Issues (Free Tier)
+      - Free tier has 512MB RAM limit
+      - WEB_CONCURRENCY=0 uses single process with threads
+      - Monitor memory usage in Render dashboard
+      - Consider upgrading to paid tier for production workloads
+
+      ## Documentation
+
+      - [Render Rails Deployment Guide](https://render.com/docs/deploy-rails)
+      - [Render Blueprint Spec](https://render.com/docs/blueprint-spec)
+      - [Custom Domains on Render](https://render.com/docs/custom-domains)
+    MARKDOWN
+
+    create_file "RENDER_DEPLOYMENT.md", checklist_content
 
     git add: "-A"
     git commit: "-m 'Configure Render.com deployment with #{render_options[:separate_worker] ? 'separate worker service' : 'Puma plugin'}'"
@@ -1342,11 +1530,51 @@ after_bundle do
   analytics_section = analytics_options[:ahoy_blazer] ? "\n    ## Analytics\n    \n    This app uses Ahoy for tracking and Blazer for analytics dashboards.\n    \n    - View analytics dashboard: `/analytics`\n    - **Authentication:** Check `.env` file for auto-generated credentials\n    - **Username:** `admin`\n    - **Password:** Unique 16-character password in `.env` file\n    - Track custom events in JavaScript:\n      ```javascript\n      ahoy.track(\"Event Name\", {property: \"value\"});\n      ```\n    - Track events in Ruby:\n      ```ruby\n      ahoy.track \"Event Name\", property: \"value\"\n      ```\n    \n    Sample queries are available in `db/blazer_queries.yml`.\n    \n    ### Securing Blazer in Production\n    \n    The dashboard uses basic authentication with a unique auto-generated password.\n    For production, you can:\n    1. Keep the strong auto-generated password\n    2. Use your app's authentication (e.g., Devise) instead\n    3. Create a read-only database user for Blazer\n    4. Restrict access by IP or VPN" : ""
 
   render_deployment_section = if render_options[:enabled]
+    tier_info = render_options[:free_tier] ?
+      "Free tier (512MB RAM, WEB_CONCURRENCY=0 for single-process threaded mode)" :
+      "Paid tier (WEB_CONCURRENCY=2 for multi-process mode)"
     worker_info = render_options[:separate_worker] ?
-      "Background jobs run in a separate worker service for better resource isolation." :
-      "Background jobs run in the web process using the Puma plugin (simpler setup, shared resources)."
+      "Separate worker service for better resource isolation" :
+      "Puma plugin (runs in web process, simpler setup)"
+    domain_info = render_options[:domain] ?
+      "Custom domain: `#{render_options[:domain]}`#{render_options[:include_www] ? " with www redirect" : ""}" :
+      "No custom domain configured (uses .onrender.com subdomain)"
 
-    "\n    ## Deployment to Render.com\n    \n    This app is configured for easy deployment to Render.com.\n    \n    ### Quick Deploy\n    \n    1. Push your code to GitHub\n    2. Connect your repository to Render\n    3. Render will automatically detect the `render.yaml` blueprint\n    4. Set the `RAILS_MASTER_KEY` environment variable in the Render dashboard:\n       - Find your key in `config/master.key`\n       - Add it as an environment variable (not synced from the blueprint)\n    \n    ### What's Configured\n    \n    - **Build script**: `bin/render-build.sh` handles dependencies, migrations, and assets\n    - **Database**: PostgreSQL database automatically provisioned\n    - **Health checks**: Rails 8's `/up` endpoint for monitoring\n    - **Concurrency**: `WEB_CONCURRENCY=2` to prevent memory issues\n    - **Background jobs**: #{worker_info}\n    \n    ### Manual Deployment\n    \n    If you prefer manual setup instead of the blueprint:\n    \n    1. Create a new Web Service on Render\n    2. Connect your repository\n    3. Set Build Command: `./bin/render-build.sh`\n    4. Set Start Command: `bundle exec puma -C config/puma.rb`\n    5. Add PostgreSQL database\n    6. Set environment variables:\n       - `DATABASE_URL` (from database)\n       - `RAILS_MASTER_KEY` (from config/master.key)\n       - `WEB_CONCURRENCY=2`\n    #{render_options[:separate_worker] ? "\n    7. Create a Background Worker service:\n       - Build Command: `bundle install`\n       - Start Command: `bundle exec rake solid_queue:start`\n       - Add same `DATABASE_URL` and `RAILS_MASTER_KEY`" : ""}\n    \n    Learn more: [Render Rails 8 Deployment Guide](https://render.com/docs/deploy-rails-8)"
+    <<~SECTION
+
+    ## Deployment to Render.com
+
+    This app is configured for easy deployment to Render.com.
+    **See `RENDER_DEPLOYMENT.md` for a complete deployment checklist.**
+
+    ### Configuration Summary
+
+    | Setting | Value |
+    |---------|-------|
+    | Tier | #{tier_info} |
+    | Background Jobs | #{worker_info} |
+    | Domain | #{domain_info} |
+
+    ### Quick Deploy
+
+    1. Push your code to GitHub
+    2. Connect your repository to Render
+    3. Render will automatically detect the `render.yaml` blueprint
+    4. Set the `RAILS_MASTER_KEY` environment variable in the Render dashboard:
+       - Find your key in `config/master.key`
+       - Add it as an environment variable (marked `sync: false` in blueprint)
+    #{render_options[:domain] ? "\n5. Configure DNS records (see `RENDER_DEPLOYMENT.md` for details)" : ""}
+
+    ### What's Configured
+
+    - **Build script**: `bin/render-build.sh` handles dependencies and assets
+    - **Migrations**: Run via `preDeployCommand` (after build, before start)
+    - **Database**: PostgreSQL database automatically provisioned
+    - **Health checks**: Rails 8's `/up` endpoint for monitoring
+    - **Environment**: `NODE_ENV=production` for optimized builds
+
+    Learn more: [Render Rails Deployment Guide](https://render.com/docs/deploy-rails)
+    SECTION
   else
     ""
   end
@@ -1588,7 +1816,10 @@ after_bundle do
     say "\nDeployment:", :cyan
     say "  #{render_options[:enabled] ? '✅' : '❌'} Render.com configuration (build script + render.yaml)"
     if render_options[:enabled]
+      say "    • Tier: #{render_options[:free_tier] ? 'Free (512MB, WEB_CONCURRENCY=0)' : 'Paid (WEB_CONCURRENCY=2)'}"
       say "    • Background jobs: #{render_options[:separate_worker] ? 'Separate worker service' : 'Puma plugin (runs in web process)'}"
+      say "    • Custom domain: #{render_options[:domain] || 'Not configured'}"
+      say "    • Deployment checklist: RENDER_DEPLOYMENT.md"
     end
 
     say "\nCode Quality:", :cyan
@@ -1602,6 +1833,12 @@ after_bundle do
   say "  1. cd #{app_name}"
   say "  2. Review and edit .env file"
   say "  3. Run: bin/dev"
+  if render_options[:enabled]
+    say "\n  For Render.com deployment:", :yellow
+    say "  4. Review RENDER_DEPLOYMENT.md for deployment checklist"
+    say "  5. Push to GitHub and connect to Render"
+    say "  6. Set RAILS_MASTER_KEY in Render Dashboard (from config/master.key)"
+  end
 
   # Display Blazer credentials if analytics was configured
   if analytics_options[:ahoy_blazer] && blazer_password

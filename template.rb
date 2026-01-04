@@ -150,6 +150,11 @@ if customize
     render_options[:domain] = nil
     render_options[:include_www] = false
   end
+
+  # CI/CD configuration
+  ci_options = {}
+  say "\nCI/CD:", :yellow
+  ci_options[:github_actions] = yes?("  Include GitHub Actions CI workflow? (y/n)")
 else
   # Use default configuration
   testing_options = {
@@ -195,6 +200,10 @@ else
     database_provider: "supabase",
     domain: nil,
     include_www: false
+  }
+
+  ci_options = {
+    github_actions: true
   }
 
   say "\n✅ Using default configuration!", :green
@@ -883,6 +892,86 @@ after_bundle do
 
     git add: "-A"
     git commit: "-m 'Configure Render.com deployment with #{render_options[:separate_worker] ? 'separate worker service' : 'Puma plugin'}'"
+  end
+
+  # === GITHUB ACTIONS CI CONFIGURATION ===
+
+  if ci_options[:github_actions]
+    say "Configuring GitHub Actions CI...", :cyan
+
+    create_file ".github/workflows/ci.yml", <<~YAML
+      name: CI
+
+      on:
+        push:
+          branches: [ "main" ]
+        pull_request:
+          branches: [ "main" ]
+
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          services:
+            postgres:
+              image: postgres:16
+              ports:
+                - 5432:5432
+              env:
+                POSTGRES_USER: rails
+                POSTGRES_PASSWORD: password
+                POSTGRES_DB: app_test
+              options: >-
+                --health-cmd pg_isready
+                --health-interval 10s
+                --health-timeout 5s
+                --health-retries 5
+
+          env:
+            RAILS_ENV: test
+            DATABASE_URL: postgres://rails:password@localhost:5432/app_test
+
+          steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install Ruby and gems
+              uses: ruby/setup-ruby@v1
+              with:
+                bundler-cache: true
+
+            - name: Set up Node
+              uses: actions/setup-node@v4
+              with:
+                node-version-file: '.node-version'
+                cache: 'yarn'
+
+            - name: Install JavaScript dependencies
+              run: yarn install
+
+            - name: Build assets
+              run: bin/rails assets:precompile
+
+            - name: Set up database
+              run: bin/rails db:test:prepare
+
+            - name: Security Scan - Brakeman
+              run: bundle exec brakeman --no-pager
+
+            - name: Security Scan - Bundler Audit
+              run: bundle exec bundler-audit --update
+
+            - name: Linting - StandardRB
+              run: bundle exec standardrb
+
+            - name: Linting - Herb
+              run: bundle exec herb analyze .
+
+            - name: Run Tests
+              run: bundle exec rspec
+    YAML
+
+    git add: "-A"
+    git commit: "-m 'Configure GitHub Actions CI'"
   end
 
   # === UUID CONFIGURATION (if selected) ===

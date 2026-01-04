@@ -37,7 +37,6 @@ say "  ✅ Skylight - Production performance monitoring"
 say "  ✅ Ahoy + Blazer - Analytics tracking and dashboard"
 say "  ✅ Rails ERD - Entity diagrams"
 say "  ❌ rails_db - Database web UI (security concern)"
-say "  ✅ bundler-audit - Vulnerability scanning"
 say "  ✅ Rollbar - Error tracking (default choice)"
 say "  ✅ Bootstrap overrides - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
@@ -78,11 +77,6 @@ if customize
   say "\nDocumentation Tools:", :yellow
   doc_options[:rails_erd] = yes?("  Include Rails ERD for entity relationship diagrams? (y/n)")
   doc_options[:rails_db] = yes?("  Include rails_db for web-based database UI? (y/n)")
-
-  # Security & safety
-  security_options = {}
-  say "\nSecurity & Safety Tools:", :yellow
-  security_options[:bundler_audit] = yes?("  Include bundler-audit for vulnerability scanning? (y/n)")
 
   # Error monitoring
   monitoring_options = {}
@@ -180,10 +174,6 @@ else
     rails_db: false
   }
 
-  security_options = {
-    bundler_audit: true
-  }
-
   monitoring_options = {
     error_service: "rollbar"
   }
@@ -243,10 +233,6 @@ gem_group :development, :test do
   # N+1 Query Detection (always included in dev/test)
   gem "bullet"
 
-  # Security
-  # Note: Rails 8+ includes brakeman by default, so we don't add it
-  gem "bundler-audit", require: false if security_options[:bundler_audit]
-
   # ERB Linting (only with full linting)
   if frontend_options[:full_linting]
     gem "better_html", require: false
@@ -295,11 +281,7 @@ gem_group :test do
   gem "webmock" if testing_options[:webmock]
   gem "simplecov", require: false if testing_options[:simplecov]
 
-  # Enhanced Capybara (always included)
-  gem "action_dispatch-testing-integration-capybara",
-    github: "thoughtbot/action_dispatch-testing-integration-capybara",
-    tag: "v0.1.1",
-    require: "action_dispatch/testing/integration/capybara/rspec"
+
 end
 
 # === AFTER BUNDLE ACTIONS ===
@@ -1712,10 +1694,10 @@ after_bundle do
   doc_commands << "- View database: Visit `/rails_db` in development" if doc_options[:rails_db]
 
   security_commands = []
-  security_commands << "bundle exec bundle-audit check" if security_options[:bundler_audit]
 
   # Rails 8+ includes brakeman by default, so we can always use it
   security_commands.unshift("bundle exec brakeman")
+  security_commands.unshift("bundle exec bundler-audit check")
 
   # README (overwrite the default Rails README)
   remove_file "README.md"
@@ -1918,9 +1900,6 @@ after_bundle do
     say "  ✅ AnnotateRb (always included)"
     say "  #{doc_options[:rails_erd] ? '✅' : '❌'} Rails ERD"
     say "  #{doc_options[:rails_db] ? '✅' : '❌'} rails_db"
-
-    say "\nSecurity & Safety:", :cyan
-    say "  #{security_options[:bundler_audit] ? '✅' : '❌'} bundler-audit"
 
     say "\nError Monitoring:", :cyan
     case monitoring_options[:error_service]

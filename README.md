@@ -43,7 +43,7 @@ A comprehensive Rails application template with modern best practices, testing t
 
 ### Security & Safety
 - **Brakeman** - Security vulnerability scanning
-- **bundler-audit** - Check for vulnerable gem dependencies (optional, default: enabled)
+- **Brakeman & Bundler Audit** - Security scanning (Rails 8.1 defaults)
 
 ### Monitoring & Analytics
 - **Error Monitoring** - Choose between Rollbar (default), Honeybadger, or None (optional)
@@ -101,7 +101,7 @@ If you choose custom configuration, you'll be prompted for:
 - **Performance Tools**: Goldiloader, rack-mini-profiler, Skylight
 - **Analytics**: Ahoy + Blazer for tracking and dashboards
 - **Documentation Tools**: Rails ERD, rails_db browser
-- **Security Tools**: bundler-audit for vulnerability scanning
+- **Security Tools**: Brakeman and bundler-audit (Rails 8.1 defaults)
 - **Error Monitoring**: Rollbar, Honeybadger, or None
 - **Frontend Tools**: Bootstrap overrides, full linting stack (Prettier, ESLint, Stylelint)
 - **Database Configuration**:
@@ -230,7 +230,7 @@ This is an enhanced version of the original firstdraft template with:
 - **Updated Gems**: amazing_print, annotaterb, dotenv (replacing deprecated versions)
 - **Testing Tools**: SimpleCov, WebMock, Shoulda Matchers, Faker
 - **Linting Stack**: Prettier, ESLint, Stylelint, erb_lint (optional)
-- **Security Tools**: Brakeman, bundler-audit
+- **Security Tools**: Brakeman, bundler-audit (Rails 8.1 defaults)
 - **Performance Tools**: Goldiloader, rack-mini-profiler, Skylight
 - **Monitoring & Analytics**: Error monitoring (Rollbar/Honeybadger), Ahoy + Blazer
 - **Database Flexibility**: Single vs. multi-database setup, UUID support

@@ -1372,65 +1372,131 @@ after_bundle do
   # === BOOTSTRAP OVERRIDES (if selected) ===
 
   if frontend_options[:bootstrap_overrides]
-    require 'net/http'
-    require 'uri'
+    bootstrap_overrides_content = <<~SCSS
+      // Bootstrap Overrides
+      // Customize Bootstrap by uncommenting and modifying variables below.
+      // This file is imported BEFORE Bootstrap, so variables here override Bootstrap's defaults.
+      // Full variable list: https://github.com/twbs/bootstrap/blob/main/scss/_variables.scss
 
-    # Download the latest Bootstrap variables from GitHub
-    bootstrap_vars_url = "https://raw.githubusercontent.com/twbs/bootstrap/main/scss/_variables.scss"
+      // =============================================================================
+      // Colors
+      // =============================================================================
+      // $primary:       #0d6efd;
+      // $secondary:     #6c757d;
+      // $success:       #198754;
+      // $info:          #0dcaf0;
+      // $warning:       #ffc107;
+      // $danger:        #dc3545;
+      // $light:         #f8f9fa;
+      // $dark:          #212529;
 
-    begin
-      say "Downloading Bootstrap variables from GitHub...", :cyan
-      uri = URI.parse(bootstrap_vars_url)
-      response = Net::HTTP.get_response(uri)
+      // $body-bg:       #fff;
+      // $body-color:    #212529;
 
-      if response.code == "200"
-        # Process the content to comment out variable declarations
-        output_lines = []
-        output_lines << "// Bootstrap Overrides"
-        output_lines << "// Uncomment and modify any variables below to customize Bootstrap's appearance"
-        output_lines << "// Source: #{bootstrap_vars_url}"
-        output_lines << ""
-        output_lines << "// This file is imported BEFORE Bootstrap in application.bootstrap.scss:"
-        output_lines << "// @import 'bootstrap-overrides';"
-        output_lines << "// @import 'bootstrap/scss/bootstrap';"
-        output_lines << ""
-        output_lines << "// ============================================"
-        output_lines << ""
+      // =============================================================================
+      // Typography
+      // =============================================================================
+      // $font-family-sans-serif: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif;
+      // $font-family-monospace:  SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      // $font-size-base:         1rem;
+      // $font-size-sm:           $font-size-base * .875;
+      // $font-size-lg:           $font-size-base * 1.25;
+      // $font-weight-normal:     400;
+      // $font-weight-bold:       700;
+      // $line-height-base:       1.5;
 
-        response.body.each_line do |line|
-          # Keep empty lines
-          if line.strip.empty?
-            output_lines << ""
-          # Keep existing comments as-is
-          elsif line.strip.start_with?('//')
-            output_lines << line.rstrip
-          # Comment out variable declarations
-          elsif line.include?('$') && line.include?(':')
-            # Remove !default and comment out the line
-            clean_line = line.rstrip.gsub(' !default', '')
-            output_lines << "// #{clean_line}"
-          # Keep other lines (like scss-docs markers) as comments
-          else
-            output_lines << "// #{line.rstrip}" unless line.strip.empty?
-          end
-        end
+      // $h1-font-size:           $font-size-base * 2.5;
+      // $h2-font-size:           $font-size-base * 2;
+      // $h3-font-size:           $font-size-base * 1.75;
+      // $h4-font-size:           $font-size-base * 1.5;
+      // $h5-font-size:           $font-size-base * 1.25;
+      // $h6-font-size:           $font-size-base;
 
-        variables_content = output_lines.join("\n") + "\n"
-        create_file "app/assets/stylesheets/_bootstrap-overrides.scss", variables_content
+      // $headings-font-weight:   500;
+      // $headings-line-height:   1.2;
 
-        # Update application.bootstrap.scss to import the overrides
-        gsub_file "app/assets/stylesheets/application.bootstrap.scss",
-          "@import 'bootstrap/scss/bootstrap';",
-          "@import 'bootstrap-overrides';\n@import 'bootstrap/scss/bootstrap';"
+      // =============================================================================
+      // Spacing
+      // =============================================================================
+      // $spacer: 1rem;
 
-        git add: "-A"
-        git commit: "-m 'Add Bootstrap overrides file for customization'"
-      else
-        say "Warning: Could not download Bootstrap variables (HTTP #{response.code}). Skipping...", :yellow
-      end
-    rescue => e
-      say "Warning: Error downloading Bootstrap variables: #{e.message}. Skipping...", :yellow
-    end
+      // =============================================================================
+      // Borders & Rounded Corners
+      // =============================================================================
+      // $border-width:           1px;
+      // $border-color:           #dee2e6;
+      // $border-radius:          0.375rem;
+      // $border-radius-sm:       0.25rem;
+      // $border-radius-lg:       0.5rem;
+      // $border-radius-xl:       1rem;
+      // $border-radius-xxl:      2rem;
+      // $border-radius-pill:     50rem;
+
+      // =============================================================================
+      // Shadows
+      // =============================================================================
+      // $box-shadow:             0 .5rem 1rem rgba(0, 0, 0, .15);
+      // $box-shadow-sm:          0 .125rem .25rem rgba(0, 0, 0, .075);
+      // $box-shadow-lg:          0 1rem 3rem rgba(0, 0, 0, .175);
+
+      // =============================================================================
+      // Buttons
+      // =============================================================================
+      // $btn-padding-y:          0.375rem;
+      // $btn-padding-x:          0.75rem;
+      // $btn-font-size:          $font-size-base;
+      // $btn-border-radius:      $border-radius;
+
+      // =============================================================================
+      // Forms
+      // =============================================================================
+      // $input-padding-y:        0.375rem;
+      // $input-padding-x:        0.75rem;
+      // $input-font-size:        $font-size-base;
+      // $input-border-radius:    $border-radius;
+      // $input-border-color:     #ced4da;
+      // $input-focus-border-color: #86b7fe;
+
+      // =============================================================================
+      // Cards
+      // =============================================================================
+      // $card-spacer-y:          1rem;
+      // $card-spacer-x:          1rem;
+      // $card-border-width:      $border-width;
+      // $card-border-color:      rgba(0, 0, 0, .125);
+      // $card-border-radius:     $border-radius;
+      // $card-box-shadow:        null;
+
+      // =============================================================================
+      // Navbar
+      // =============================================================================
+      // $navbar-padding-y:       0.5rem;
+      // $navbar-padding-x:       null;
+      // $nav-link-padding-y:     0.5rem;
+      // $nav-link-padding-x:     1rem;
+
+      // =============================================================================
+      // Modals
+      // =============================================================================
+      // $modal-inner-padding:    1rem;
+      // $modal-content-border-radius: $border-radius-lg;
+
+      // =============================================================================
+      // Alerts
+      // =============================================================================
+      // $alert-padding-y:        1rem;
+      // $alert-padding-x:        1rem;
+      // $alert-border-radius:    $border-radius;
+    SCSS
+
+    create_file "app/assets/stylesheets/_bootstrap-overrides.scss", bootstrap_overrides_content
+
+    gsub_file "app/assets/stylesheets/application.bootstrap.scss",
+      "@import 'bootstrap/scss/bootstrap';",
+      "@import 'bootstrap-overrides';\n@import 'bootstrap/scss/bootstrap';"
+
+    git add: "-A"
+    git commit: "-m 'Add Bootstrap overrides file for customization'"
   end
 
   # === DOTENV CONFIGURATION ===

@@ -1369,9 +1369,9 @@ after_bundle do
     git commit: "-m 'Configure JavaScript/CSS linting'"
   end
 
-  # === BOOTSTRAP OVERRIDES (if selected) ===
+  # === BOOTSTRAP OVERRIDES (if selected and Bootstrap is installed) ===
 
-  if frontend_options[:bootstrap_overrides]
+  if frontend_options[:bootstrap_overrides] && File.exist?("app/assets/stylesheets/application.bootstrap.scss")
     bootstrap_overrides_content = <<~SCSS
       // Bootstrap Overrides
       // Customize Bootstrap by uncommenting and modifying variables below.

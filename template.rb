@@ -317,6 +317,64 @@ gem_group :test do
 
 end
 
+# Keep the generated Gemfile clean and under our control.
+# The default Rails Gemfile (and some generators) include lots of commentary; strip it out.
+def strip_comments_from_gemfile!(path = "Gemfile")
+  lines = File.read(path).each_line.map do |line|
+    out = +""
+    in_single = false
+    in_double = false
+    escaped = false
+
+    line.each_char do |ch|
+      if escaped
+        out << ch
+        escaped = false
+        next
+      end
+
+      if (in_single || in_double) && ch == "\\"
+        out << ch
+        escaped = true
+        next
+      end
+
+      if !in_double && ch == "'"
+        in_single = !in_single
+        out << ch
+        next
+      end
+
+      if !in_single && ch == "\""
+        in_double = !in_double
+        out << ch
+        next
+      end
+
+      break if ch == "#" && !in_single && !in_double
+
+      out << ch
+    end
+
+    out = out.rstrip
+    out.strip.empty? ? "" : out
+  end
+
+  # Trim leading/trailing blank lines and collapse consecutive blanks.
+  lines.shift while lines.first == ""
+  lines.pop while lines.last == ""
+
+  collapsed = []
+  lines.each do |line|
+    next if line == "" && collapsed.last == ""
+    collapsed << line
+  end
+
+  File.write(path, collapsed.join("\n") + "\n")
+end
+
+strip_comments_from_gemfile!
+
 # === AFTER BUNDLE ACTIONS ===
 
 after_bundle do

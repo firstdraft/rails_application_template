@@ -230,8 +230,9 @@ end
 gem_group :development, :test do
   # Essential Debugging (always included)
   gem "pry-rails"
-  gem "better_errors"
-  gem "binding_of_caller"
+  # Temporarily disabled: not Ruby 4-ready (re-enable when compatible)
+  # gem "better_errors"
+  # gem "binding_of_caller"
   gem "amazing_print"
 
   # Environment (always included)

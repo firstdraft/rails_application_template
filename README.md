@@ -13,7 +13,7 @@ A comprehensive Rails application template with modern best practices, testing t
 
 ### Development & Debugging Tools
 - **pry-rails** - Enhanced Rails console
-- **better_errors + binding_of_caller** - Better error pages with REPL
+- (Temporarily disabled) **better_errors + binding_of_caller** - Better error pages with REPL (waiting on Ruby 4 compatibility)
 - **amazing_print** - Pretty-print Ruby objects (replaces deprecated awesome_print)
 - **bullet** - N+1 query detection
 - **goldiloader** - Automatic N+1 prevention (optional, default: enabled)

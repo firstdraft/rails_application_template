@@ -5,7 +5,7 @@ A comprehensive Rails application template with modern best practices, testing t
 ## Features
 
 ### Core Stack
-- PostgreSQL database
+- PostgreSQL 18+ database
 - RSpec for testing
 - StandardRB for Ruby linting
 - Bootstrap CSS support (with `--css=bootstrap`)
@@ -55,7 +55,7 @@ A comprehensive Rails application template with modern best practices, testing t
 - **Force SSL** in production
 - **Enhanced production logging**
 - **Database Options**:
-  - Optional UUID primary keys
+  - Optional UUID primary keys (UUIDv7 default when enabled; UUIDv4 available)
   - Optional Rails 8 multi-database setup (separate databases for cache/queue/cable) - defaults to single database for simpler deployment
 
 ### Project Files
@@ -104,7 +104,7 @@ If you choose custom configuration, you'll be prompted for:
 - **Error Monitoring**: Rollbar, Honeybadger, or None
 - **Frontend Tools**: Bootstrap overrides, full linting stack (Prettier, ESLint, Stylelint)
 - **Database Configuration**:
-  - UUID primary keys vs. standard integers
+  - UUID primary keys vs. standard integers (choose UUIDv7 or UUIDv4; default is UUIDv7)
   - Rails 8 multi-database setup (separate databases for cache/queue/cable) vs. single database
 - **Deployment**: Render.com-specific configuration (build script, render.yaml blueprint, tier/database provider selection, optional worker service, optional custom domain checklist)
 - **CI/CD**: GitHub Actions CI workflow (`.github/workflows/ci.yml`)
@@ -230,7 +230,7 @@ The template works with minimal or no configuration changes on:
 - Fly.io
 - Railway
 - Heroku
-- Any platform supporting Rails 8 and PostgreSQL
+- Any platform supporting Rails 8 and PostgreSQL 18+
 
 ## Differences from Original
 

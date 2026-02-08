@@ -40,7 +40,7 @@ say "  ❌ rails_db - Database web UI (security concern)"
 say "  ✅ Rollbar - Error tracking (default choice)"
 say "  ✅ Bootstrap overrides - Custom Sass variables file"
 say "  ❌ Full JS/CSS linting - Prettier, ESLint, Stylelint (not needed for all apps)"
-say "  ❌ UUID primary keys - Use UUIDs instead of integers"
+say "  ❌ UUID primary keys - Use UUIDs instead of integers (UUIDv7 default when enabled)"
 say "  ❌ Multi-database setup - Rails 8 separate databases (single DB is simpler for deployment)"
 say "  ❌ Render.com deployment - Build script and render.yaml blueprint"
 
@@ -105,6 +105,16 @@ if customize
   db_options = {}
   say "\nDatabase Configuration:", :yellow
   db_options[:use_uuid] = yes?("  Use UUIDs for primary keys instead of integers? (y/n)")
+  if db_options[:use_uuid]
+    say "  UUID version:", :cyan
+    say "    1. UUID v7 (default, time-ordered)"
+    say "    2. UUID v4 (random)"
+    uuid_choice = ask("    Enter choice (1-2):", limited_to: %w[1 2], default: "1")
+    db_options[:uuid_version] = (uuid_choice == "1") ? :v7 : :v4
+  else
+    # Irrelevant unless UUIDs are enabled, but keeping a stable default simplifies downstream conditionals.
+    db_options[:uuid_version] = :v7
+  end
   db_options[:multi_database] = yes?("  Use Rails 8 multi-database setup (separate DBs for cache/queue/cable)? (y/n)")
 
   # Deployment configuration
@@ -190,6 +200,7 @@ else
 
   db_options = {
     use_uuid: false,
+    uuid_version: :v7,
     multi_database: false
   }
 
@@ -238,6 +249,11 @@ gem_group :development, :test do
   gem "standard", require: false
   gem "standard-rails", require: false
   gem "herb", require: false
+
+  # Security scanning (used in README + CI)
+  unless File.read("Gemfile").match?(/^\s*gem\s+["']bundler-audit["']/)
+    gem "bundler-audit", require: false
+  end
 
   # N+1 Query Detection (always included in dev/test)
   gem "bullet"
@@ -311,7 +327,7 @@ after_bundle do
     remove_file "config/database.yml"
 
     create_file "config/database.yml", <<~YAML
-      # PostgreSQL. Versions 9.3 and up are supported.
+      # PostgreSQL 18+ is required (this template assumes Postgres 18 features when UUIDs are enabled).
       #
       # Install the pg driver:
       #   gem install pg
@@ -913,7 +929,7 @@ after_bundle do
           runs-on: ubuntu-latest
           services:
             postgres:
-              image: postgres:16
+              image: postgres:18
               ports:
                 - 5432:5432
               env:
@@ -958,7 +974,12 @@ after_bundle do
               run: bundle exec brakeman --no-pager
 
             - name: Security Scan - Bundler Audit
-              run: bundle exec bundler-audit --update
+              run: |
+                if [ -x bin/bundler-audit ]; then
+                  bin/bundler-audit check --update
+                else
+                  bundle exec bundle-audit check --update
+                fi
 
             - name: Linting - StandardRB
               run: bundle exec standardrb
@@ -977,26 +998,40 @@ after_bundle do
   # === UUID CONFIGURATION (if selected) ===
 
   if db_options[:use_uuid]
-    create_file "db/migrate/#{Time.now.utc.strftime("%Y%m%d%H%M%S")}_enable_extension_for_uuid.rb", <<~RUBY
-      class EnableExtensionForUuid < ActiveRecord::Migration[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]
-        def change
-          enable_extension 'pgcrypto'
-        end
-      end
-    RUBY
-
-    rails_command("db:migrate")
-
     insert_into_file "config/application.rb",
       "      g.orm :active_record, primary_key_type: :uuid\n",
       after: "    config.generators do |g|\n"
 
-    inject_into_class "app/models/application_record.rb",
-      "ApplicationRecord",
-      "  self.implicit_order_column = \"created_at\"\n\n"
+    uuid_fn = (db_options[:uuid_version] == :v7) ? "uuidv7()" : "uuidv4()"
+    create_file "config/initializers/uuid_primary_key_default.rb", <<~RUBY
+      # frozen_string_literal: true
+
+      # PostgreSQL 18+ has built-in UUID generators (uuidv7/uuidv4).
+      # Rails defaults UUID primary keys to gen_random_uuid()/uuid_generate_v4() depending on setup;
+      # this makes UUID PKs use #{uuid_fn} unless a migration explicitly sets a different default.
+      ActiveSupport.on_load(:active_record) do
+        next unless defined?(ActiveRecord::ConnectionAdapters::PostgreSQL::ColumnMethods)
+
+        module UuidPrimaryKeyDefaultFunctionForPostgres18
+          def primary_key(name, type = :primary_key, **options)
+            if type == :uuid && !options.key?(:default)
+              options[:default] = -> { "#{uuid_fn}" }
+            end
+            super(name, type, **options)
+          end
+        end
+
+        ActiveRecord::ConnectionAdapters::PostgreSQL::ColumnMethods.prepend(UuidPrimaryKeyDefaultFunctionForPostgres18)
+      end
+    RUBY
+
+    insert_into_file "app/models/application_record.rb",
+      "\n  self.implicit_order_column = \"created_at\"\n",
+      after: "  primary_abstract_class\n"
 
     git add: "-A"
-    git commit: "-m 'Configure UUID primary keys'"
+    uuid_label = (db_options[:uuid_version] == :v7) ? "v7" : "v4"
+    git commit: "-m 'Configure UUID primary keys (#{uuid_label})'"
   end
 
   # === RSPEC SETUP ===
@@ -1749,23 +1784,219 @@ after_bundle do
 
   # === PROJECT DOCUMENTATION ===
 
-  # Build dynamic sections based on configuration
-  testing_section = testing_options[:simplecov] ? "\n    With coverage:\n    ```bash\n    COVERAGE=true bundle exec rspec\n    ```" : ""
+  # Detect frontend tooling so README matches the app that was generated.
+  uses_node = File.exist?("package.json")
+  package_manager =
+    if File.exist?("yarn.lock")
+      "yarn"
+    elsif File.exist?("pnpm-lock.yaml")
+      "pnpm"
+    elsif File.exist?("bun.lockb") || File.exist?("bun.lock")
+      "bun"
+    elsif File.exist?("package-lock.json")
+      "npm"
+    elsif uses_node
+      "npm"
+    end
 
-  linting_section = frontend_options[:full_linting] ? "\n    JavaScript/CSS linting:\n    ```bash\n    yarn lint\n    yarn fix:prettier\n    ```\n    \n    ERB linting:\n    ```bash\n    bundle exec erb_lint --lint-all\n    bundle exec erb_lint --lint-all --autocorrect\n    ```" : ""
+  js_lint_cmd =
+    case package_manager
+    when "yarn"
+      "yarn lint"
+    when "pnpm"
+      "pnpm lint"
+    when "bun"
+      "bun run lint"
+    when "npm"
+      "npm run lint"
+    end
 
-  error_monitoring_section = case monitoring_options[:error_service]
-  when "rollbar"
-    "\n    ## Error Monitoring\n    \n    This app uses Rollbar for error tracking. Set your access token:\n    ```bash\n    ROLLBAR_ACCESS_TOKEN=your_token_here\n    ```\n    \n    Visit [rollbar.com](https://rollbar.com) to sign up and get your access token."
-  when "honeybadger"
-    "\n    ## Error Monitoring\n    \n    This app uses Honeybadger for error tracking. Set your API key:\n    ```bash\n    HONEYBADGER_API_KEY=your_key_here\n    ```\n    \n    Visit [honeybadger.io](https://honeybadger.io) to sign up and get your API key."
+  js_fix_cmd =
+    case package_manager
+    when "yarn"
+      "yarn fix:prettier"
+    when "pnpm"
+      "pnpm fix:prettier"
+    when "bun"
+      "bun run fix:prettier"
+    when "npm"
+      "npm run fix:prettier"
+    end
+
+  js_install_cmd =
+    case package_manager
+    when "yarn"
+      "yarn install"
+    when "pnpm"
+      "pnpm install"
+    when "bun"
+      "bun install"
+    when "npm"
+      "npm install"
+    end
+
+  dev_command = File.exist?("bin/dev") ? "bin/dev" : "bin/rails server"
+  package_manager_label =
+    case package_manager
+    when "yarn"
+      "Yarn"
+    when "npm"
+      "npm"
+    when "pnpm"
+      "pnpm"
+    when "bun"
+      "bun"
+    end
+
+  requirements_lines = []
+  requirements_lines << "- Ruby #{RUBY_VERSION} (see `.ruby-version`)"
+  requirements_lines << "- PostgreSQL"
+  if uses_node
+    requirements_lines << "- Node.js (see `.node-version`)"
+    requirements_lines << "- #{package_manager_label}" if package_manager_label
+  end
+
+  tooling_lines = []
+  tooling_lines << "- RSpec + FactoryBot"
+  tooling_lines << "- StandardRB"
+  tooling_lines << "- Herb"
+  tooling_lines << "- bundler-audit"
+  tooling_lines << "- Bullet"
+  tooling_lines << "- Solid Queue"
+  tooling_lines << "- AnnotateRb"
+  tooling_lines << "- Dotenv"
+  tooling_lines << "- SimpleCov (coverage)" if testing_options[:simplecov]
+  tooling_lines << "- Shoulda Matchers" if testing_options[:shoulda]
+  tooling_lines << "- Faker" if testing_options[:faker]
+  tooling_lines << "- WebMock" if testing_options[:webmock]
+  tooling_lines << "- Goldiloader (automatic N+1 prevention)" if performance_options[:goldiloader]
+  tooling_lines << "- rack-mini-profiler" if performance_options[:rack_profiler]
+  tooling_lines << "- Skylight" if performance_options[:skylight]
+  tooling_lines << "- Ahoy + Blazer" if analytics_options[:ahoy_blazer]
+  tooling_lines << "- Rails ERD" if doc_options[:rails_erd]
+  tooling_lines << "- rails_db" if doc_options[:rails_db]
+  tooling_lines << "- Rollbar" if monitoring_options[:error_service] == "rollbar"
+  tooling_lines << "- Honeybadger" if monitoring_options[:error_service] == "honeybadger"
+  tooling_lines << "- Bootstrap overrides (`app/assets/stylesheets/_bootstrap-overrides.scss`)" if frontend_options[:bootstrap_overrides]
+  tooling_lines << "- Full JS/CSS/ERB linting stack" if frontend_options[:full_linting]
+  tooling_lines << "- UUID primary keys" if db_options[:use_uuid]
+  tooling_lines << "- Rails multi-database (cache/queue/cable)" if db_options[:multi_database]
+  tooling_lines << "- Render.com deployment files (`render.yaml`, `bin/render-build.sh`)" if render_options[:enabled]
+  tooling_lines << "- GitHub Actions CI (`.github/workflows/ci.yml`)" if ci_options[:github_actions]
+
+  dependency_install_cmds = ["bundle install"]
+  dependency_install_cmds << js_install_cmd if js_install_cmd
+
+  testing_section = if testing_options[:simplecov]
+    <<~MARKDOWN
+
+      With coverage:
+      ```bash
+      COVERAGE=true bundle exec rspec
+      ```
+    MARKDOWN
   else
     ""
   end
 
-  performance_monitoring_section = performance_options[:skylight] ? "\n    ## Performance Monitoring\n    \n    This app uses Skylight for performance monitoring. Set your authentication token:\n    ```bash\n    SKYLIGHT_AUTHENTICATION=your_token_here\n    ```\n    \n    Visit [skylight.io](https://skylight.io) to sign up and get your authentication token." : ""
+  linting_section = if frontend_options[:full_linting]
+    <<~MARKDOWN
 
-  analytics_section = analytics_options[:ahoy_blazer] ? "\n    ## Analytics\n    \n    This app uses Ahoy for tracking and Blazer for analytics dashboards.\n    \n    - View analytics dashboard: `/analytics`\n    - **Authentication:** Check `.env` file for auto-generated credentials\n    - **Username:** `admin`\n    - **Password:** Unique 16-character password in `.env` file\n    - Track custom events in JavaScript:\n      ```javascript\n      ahoy.track(\"Event Name\", {property: \"value\"});\n      ```\n    - Track events in Ruby:\n      ```ruby\n      ahoy.track \"Event Name\", property: \"value\"\n      ```\n    \n    Sample queries are available in `db/blazer_queries.yml`.\n    \n    ### Securing Blazer in Production\n    \n    The dashboard uses basic authentication with a unique auto-generated password.\n    For production, you can:\n    1. Keep the strong auto-generated password\n    2. Use your app's authentication (e.g., Devise) instead\n    3. Create a read-only database user for Blazer\n    4. Restrict access by IP or VPN" : ""
+      JavaScript/CSS linting:
+      ```bash
+      #{js_lint_cmd}
+      #{js_fix_cmd}
+      ```
+
+      ERB linting:
+      ```bash
+      bundle exec erb_lint --lint-all
+      bundle exec erb_lint --lint-all --autocorrect
+      ```
+    MARKDOWN
+  else
+    ""
+  end
+
+  error_monitoring_section = case monitoring_options[:error_service]
+  when "rollbar"
+    <<~MARKDOWN
+
+      ## Error Monitoring
+
+      This app uses Rollbar for error tracking. Set your access token:
+      ```bash
+      ROLLBAR_ACCESS_TOKEN=your_token_here
+      ```
+
+      Visit [rollbar.com](https://rollbar.com) to sign up and get your access token.
+    MARKDOWN
+  when "honeybadger"
+    <<~MARKDOWN
+
+      ## Error Monitoring
+
+      This app uses Honeybadger for error tracking. Set your API key:
+      ```bash
+      HONEYBADGER_API_KEY=your_key_here
+      ```
+
+      Visit [honeybadger.io](https://honeybadger.io) to sign up and get your API key.
+    MARKDOWN
+  else
+    ""
+  end
+
+  performance_monitoring_section = if performance_options[:skylight]
+    <<~MARKDOWN
+
+      ## Performance Monitoring
+
+      This app uses Skylight for performance monitoring. Set your authentication token:
+      ```bash
+      SKYLIGHT_AUTHENTICATION=your_token_here
+      ```
+
+      Visit [skylight.io](https://skylight.io) to sign up and get your authentication token.
+    MARKDOWN
+  else
+    ""
+  end
+
+  analytics_section = if analytics_options[:ahoy_blazer]
+    <<~MARKDOWN
+
+      ## Analytics
+
+      This app uses Ahoy for tracking and Blazer for analytics dashboards.
+
+      - View analytics dashboard: `/analytics`
+      - **Authentication:** Check `.env` file for auto-generated credentials
+      - **Username:** `admin`
+      - **Password:** Unique 16-character password in `.env` file
+      - Track custom events in JavaScript:
+        ```javascript
+        ahoy.track("Event Name", {property: "value"});
+        ```
+      - Track events in Ruby:
+        ```ruby
+        ahoy.track "Event Name", property: "value"
+        ```
+
+      Sample queries are available in `db/blazer_queries.yml`.
+
+      ### Securing Blazer in Production
+
+      The dashboard uses basic authentication with a unique auto-generated password.
+      For production, you can:
+      1. Keep the strong auto-generated password
+      2. Use your app's authentication (e.g., Devise) instead
+      3. Create a read-only database user for Blazer
+      4. Restrict access by IP or VPN
+    MARKDOWN
+  else
+    ""
+  end
 
   render_deployment_section = if render_options[:enabled]
     tier_info = render_options[:free_tier] ?
@@ -1848,38 +2079,112 @@ after_bundle do
   doc_commands << "- Annotate models: `bundle exec annotaterb models`"
   doc_commands << "- View database: Visit `/rails_db` in development" if doc_options[:rails_db]
 
-  security_commands = []
+  bundler_audit_command =
+    if File.exist?("bin/bundler-audit")
+      "bin/bundler-audit check --update"
+    else
+      "bundle exec bundle-audit check --update"
+    end
 
-  # Rails 8+ includes brakeman by default, so we can always use it
-  security_commands.unshift("bundle exec brakeman")
-  security_commands.unshift("bundle exec bundler-audit check")
+  security_commands = [
+    bundler_audit_command,
+    "bundle exec brakeman --no-pager"
+  ]
+
+  ci_section = if ci_options[:github_actions]
+    <<~MARKDOWN
+
+      ## Continuous Integration
+
+      GitHub Actions CI is configured in `.github/workflows/ci.yml`.
+    MARKDOWN
+  else
+    ""
+  end
+
+  database_notes = []
+  database_notes << "- Primary keys default to UUIDs." if db_options[:use_uuid]
+  database_notes << "- Rails multi-database is enabled (separate DBs for cache/queue/cable)." if db_options[:multi_database]
+  database_section = if database_notes.any?
+    <<~MARKDOWN
+
+      ## Database Notes
+
+      #{database_notes.join("\n")}
+    MARKDOWN
+  else
+    ""
+  end
+
+  n_plus_one_intro =
+    if performance_options[:goldiloader]
+      "This app is configured to both detect and prevent N+1 queries."
+    else
+      "This app is configured to detect N+1 queries in development and test."
+    end
+
+  bullet_unused_eager_loading_line =
+    if performance_options[:goldiloader]
+      "- Unused eager loading detection is disabled to work well with Goldiloader"
+    else
+      "- Unused eager loading detection is disabled (enable it in Bullet config if you want it)"
+    end
+
+  goldiloader_details = if performance_options[:goldiloader]
+    <<~MARKDOWN
+      Automatically eager loads associations when accessed.
+      - Works in all environments (development, test, production)
+      - Disable for specific associations: `has_many :posts, -> { auto_include(false) }`
+      - Disable for code blocks: `Goldiloader.disabled { ... }`
+    MARKDOWN
+  else
+    "Not included. Enable it in the template options if you want automatic N+1 prevention."
+  end
+
+  rack_profiler_section = if performance_options[:rack_profiler]
+    <<~MARKDOWN
+
+      ### rack-mini-profiler
+
+      Enabled in development. You should see the profiler badge when you load pages.
+    MARKDOWN
+  else
+    ""
+  end
+
+  solid_queue_dev_note = if File.exist?("Procfile.dev") && File.read("Procfile.dev").match?(/^\s*jobs:/)
+    "\n\nIn development, `#{dev_command}` also starts a Solid Queue worker (see `Procfile.dev`)."
+  else
+    ""
+  end
 
   # README (overwrite the default Rails README)
   remove_file "README.md"
   create_file "README.md", <<~MARKDOWN
     # #{app_name.humanize}
 
+    ## Tooling
+
+    This app was generated from a Rails application template and includes:
+
+    #{tooling_lines.join("\n")}
+
     ## Requirements
 
-    - Ruby #{RUBY_VERSION}
-    - PostgreSQL
-    - Node.js >= 20.0.0
-    - Yarn
+    #{requirements_lines.join("\n")}
 
     ## Setup
 
     1. Clone the repository
     2. Install dependencies:
        ```bash
-       bundle install
-       yarn install
+       #{dependency_install_cmds.join("\n")}
        ```
 
     3. Setup database:
        ```bash
-       rails db:create
-       rails db:migrate
-       rails db:seed
+       bin/rails db:prepare
+       bin/rails db:seed
        ```
 
     4. Copy environment variables:
@@ -1892,7 +2197,7 @@ after_bundle do
 
     Start the development server:
     ```bash
-    bin/dev
+    #{dev_command}
     ```
 
     ## Testing
@@ -1923,32 +2228,28 @@ after_bundle do
 
     ## Performance & N+1 Prevention
 
-    This app uses a two-pronged approach to prevent N+1 queries:
-
-    ### Goldiloader (Prevention)
-    #{"Automatically eager loads associations when accessed to prevent N+1 queries from occurring." if performance_options[:goldiloader]}
-    #{"- Works in all environments (development, test, production)" if performance_options[:goldiloader]}
-    #{"- Disable for specific associations: `has_many :posts, -> { auto_include(false) }`" if performance_options[:goldiloader]}
-    #{"- Disable for code blocks: `Goldiloader.disabled { ... }`" if performance_options[:goldiloader]}
-    #{"Not included - enable in template options to automatically prevent N+1 queries." unless performance_options[:goldiloader]}
+    #{n_plus_one_intro}
 
     ### Bullet (Detection)
     - Detects N+1 queries and suggests fixes in development and test
     - Logs to server console and displays in HTML footer
-    - Unused eager loading detection is disabled to work well with Goldiloader
+    #{bullet_unused_eager_loading_line}
     - View N+1 warnings in:
       - Browser footer (development only)
       - Rails server log
       - Browser console
 
+    ### Goldiloader (Prevention)
+    #{goldiloader_details}#{rack_profiler_section}
+
     ## Background Jobs
 
-    This app uses Solid Queue (Rails 8 default) for background job processing.
+    This app uses Solid Queue (Rails 8 default) for background job processing.#{solid_queue_dev_note}
 
     ## Documentation
 
     #{doc_commands.join("\n")}
-#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}#{render_deployment_section}
+#{database_section}#{ci_section}#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}#{render_deployment_section}
   MARKDOWN
 
   # CONTRIBUTING.md
@@ -2071,7 +2372,13 @@ after_bundle do
     say "  #{frontend_options[:full_linting] ? '✅' : '❌'} Full JS/CSS/ERB linting stack"
 
     say "\nDatabase Configuration:", :cyan
-    say "  #{db_options[:use_uuid] ? '✅' : '❌'} UUID primary keys"
+    uuid_line =
+      if db_options[:use_uuid]
+        "✅ UUID primary keys (#{db_options[:uuid_version].to_s.upcase})"
+      else
+        "❌ UUID primary keys"
+      end
+    say "  #{uuid_line}"
     say "  #{db_options[:multi_database] ? '✅' : '❌'} Rails 8 multi-database setup (separate DBs for cache/queue/cable)"
 
     say "\nDeployment:", :cyan

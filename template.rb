@@ -1050,6 +1050,9 @@ after_bundle do
             - name: Linting - StandardRB
               run: bundle exec standardrb
 
+            - name: Linting - Gemfile ordering
+              run: bundle exec rubocop --only Bundler/OrderedGems Gemfile
+
             - name: Linting - Herb
               run: bundle exec herb analyze .
 
@@ -2281,6 +2284,12 @@ after_bundle do
     bundle exec standardrb --fix
     ```
 
+    Gemfile ordering:
+    ```bash
+    bundle exec rubocop --only Bundler/OrderedGems Gemfile
+    bundle exec rubocop -A --only Bundler/OrderedGems Gemfile
+    ```
+
     HTML+ERB analysis:
     ```bash
     bundle exec herb analyze .
@@ -2335,6 +2344,7 @@ after_bundle do
     ## Code Style
 
     - Ruby: StandardRB
+    - Gemfile: RuboCop (Bundler/OrderedGems)
     - HTML+ERB: Herb
     #{"- JavaScript: ESLint with Thoughtbot config\n    - CSS: Stylelint with Thoughtbot config\n    - ERB: erb_lint" if frontend_options[:full_linting]}
 
@@ -2376,6 +2386,10 @@ after_bundle do
   # Run StandardRB with both safe and unsafe fixes
   system("bundle exec standardrb --fix")
   system("bundle exec standardrb --fix-unsafely")
+
+  # Order gems in Gemfile (StandardRB intentionally disables Bundler/OrderedGems)
+  say "\nOrdering gems in Gemfile...", :cyan
+  system("bundle exec rubocop -A --only Bundler/OrderedGems Gemfile")
 
   # Check if there are still violations
   violations_output = `bundle exec standardrb 2>&1`

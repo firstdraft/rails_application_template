@@ -12,7 +12,8 @@ A comprehensive Rails application template with modern best practices, testing t
 - Esbuild for JavaScript (with `--javascript=esbuild`)
 
 ### Development & Debugging Tools
-- **pry-rails** - Enhanced Rails console
+- **debug** - Modern Ruby debugger (breakpoints with `debugger`)
+- **pry** - Enhanced REPL (`bundle exec pry -r ./config/environment`)
 - (Temporarily disabled) **better_errors + binding_of_caller** - Better error pages with REPL (waiting on Ruby 4 compatibility)
 - **amazing_print** - Pretty-print Ruby objects (replaces deprecated awesome_print)
 - **bullet** - N+1 query detection

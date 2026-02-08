@@ -229,7 +229,14 @@ end
 
 gem_group :development, :test do
   # Essential Debugging (always included)
-  gem "pry-rails"
+  # Rails uses IRB by default; `debug` is the modern Ruby debugger. `pry` is an optional enhanced REPL.
+  unless File.read("Gemfile").match?(/^\s*gem\s+["']debug["']/)
+    gem "debug", platforms: %i[mri mingw x64_mingw]
+  end
+
+  unless File.read("Gemfile").match?(/^\s*gem\s+["']pry["']/)
+    gem "pry"
+  end
   # Temporarily disabled: not Ruby 4-ready (re-enable when compatible)
   # gem "better_errors"
   # gem "binding_of_caller"

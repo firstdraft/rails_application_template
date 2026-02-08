@@ -27,14 +27,14 @@ A comprehensive Rails application template with modern best practices, testing t
 - **Faker** for test data generation (optional, default: enabled)
 - **SimpleCov** for code coverage reporting (optional, default: enabled)
 - **WebMock** for HTTP request stubbing (optional, default: disabled)
-- **action_dispatch-testing-integration-capybara** - Enhanced Capybara integration
 
 ### Code Quality & Linting
 - **StandardRB + Standard-Rails** for Ruby
+- **Herb** - HTML+ERB linting and analysis
 - **Prettier** for JavaScript/CSS formatting (optional, default: disabled)
 - **ESLint** with Thoughtbot configuration (optional, default: disabled)
 - **Stylelint** with Thoughtbot configuration (optional, default: disabled)
-- **erb_lint + better_html** for ERB template linting
+- **erb_lint + better_html** for ERB template linting (only when full linting stack is enabled)
 
 ### Documentation & Visualization
 - **AnnotateRb** - Automatic model schema annotations (replaces deprecated annotate gem)
@@ -101,13 +101,13 @@ If you choose custom configuration, you'll be prompted for:
 - **Performance Tools**: Goldiloader, rack-mini-profiler, Skylight
 - **Analytics**: Ahoy + Blazer for tracking and dashboards
 - **Documentation Tools**: Rails ERD, rails_db browser
-- **Security Tools**: Brakeman and bundler-audit (Rails 8.1 defaults)
 - **Error Monitoring**: Rollbar, Honeybadger, or None
 - **Frontend Tools**: Bootstrap overrides, full linting stack (Prettier, ESLint, Stylelint)
 - **Database Configuration**:
   - UUID primary keys vs. standard integers
   - Rails 8 multi-database setup (separate databases for cache/queue/cable) vs. single database
-- **Deployment**: Render.com-specific configuration (build script, render.yaml, worker setup)
+- **Deployment**: Render.com-specific configuration (build script, render.yaml blueprint, tier/database provider selection, optional worker service, optional custom domain checklist)
+- **CI/CD**: GitHub Actions CI workflow (`.github/workflows/ci.yml`)
 
 ## What Gets Configured
 
@@ -120,8 +120,8 @@ If you choose custom configuration, you'll be prompted for:
 
 ### Linting
 - StandardRB configuration for Ruby
-- Prettier, ESLint, and Stylelint for frontend code
-- ERB linting with better_html
+- Herb configuration for HTML+ERB
+- Optional full frontend linting stack (Prettier, ESLint, Stylelint) and erb_lint/better_html
 - All with proper ignore patterns and configurations
 
 ### Development Tools
@@ -132,6 +132,9 @@ If you choose custom configuration, you'll be prompted for:
 ### Git Workflow
 - Incremental commits after each configuration step
 - Clean git history showing the setup progression
+
+### CI/CD (Optional)
+- GitHub Actions workflow with Postgres service, asset build, security scans, linting, and RSpec
 
 ## Available Commands
 
@@ -157,11 +160,14 @@ COVERAGE=true bundle exec rspec # Run with coverage report
 bundle exec standardrb         # Check Ruby code
 bundle exec standardrb --fix   # Fix Ruby issues
 
-# JavaScript/CSS
+# HTML+ERB
+bundle exec herb analyze .     # Analyze HTML+ERB (views/components)
+
+# JavaScript/CSS (only if full linting stack is enabled)
 yarn lint                      # Check JS/CSS
 yarn fix:prettier              # Fix JS/CSS formatting
 
-# ERB Templates
+# ERB Templates (only if full linting stack is enabled)
 bundle exec erb_lint --lint-all              # Check ERB
 bundle exec erb_lint --lint-all --autocorrect # Fix ERB
 ```
@@ -207,11 +213,14 @@ This template creates apps configured for generic production deployment, suitabl
 ### Render.com (Optional)
 
 When enabled during setup, the template generates Render.com-specific configuration:
-- `bin/render-build.sh` - Automated build script for bundle, migrations, and assets
-- `render.yaml` - Blueprint file with web service and database configuration
+- `bin/render-build.sh` - Automated build script for dependencies and assets (migrations run in `preDeployCommand`)
+- `render.yaml` - Blueprint file with web service configuration and optional database provisioning
 - Health check endpoint (`/up`) configuration
+- Tier selection (free vs paid) that adjusts defaults like `WEB_CONCURRENCY`
+- Database provider selection (Render Postgres or Supabase; free tier defaults to Supabase)
 - Choice between Solid Queue as a Puma plugin or separate worker service
 - Environment variable guidance for `RAILS_MASTER_KEY` and `WEB_CONCURRENCY`
+- `RENDER_DEPLOYMENT.md` - Per-project checklist (includes optional Supabase setup steps and optional custom domain DNS guidance)
 
 See [Render's Rails 8 deployment guide](https://render.com/docs/deploy-rails-8) for more details.
 
@@ -229,12 +238,13 @@ This is an enhanced version of the original firstdraft template with:
 - **Interactive Customization**: Choose which tools to include or use sensible defaults
 - **Updated Gems**: amazing_print, annotaterb, dotenv (replacing deprecated versions)
 - **Testing Tools**: SimpleCov, WebMock, Shoulda Matchers, Faker
-- **Linting Stack**: Prettier, ESLint, Stylelint, erb_lint (optional)
+- **Linting Stack**: StandardRB + Standard-Rails, Herb; optional Prettier, ESLint, Stylelint, erb_lint
 - **Security Tools**: Brakeman, bundler-audit (Rails 8.1 defaults)
 - **Performance Tools**: Goldiloader, rack-mini-profiler, Skylight
 - **Monitoring & Analytics**: Error monitoring (Rollbar/Honeybadger), Ahoy + Blazer
 - **Database Flexibility**: Single vs. multi-database setup, UUID support
 - **Deployment Options**: Render.com-specific configuration available
+- **CI/CD**: Optional GitHub Actions workflow
 - **Modern Production Configuration**: Generic setup for any platform
 - **Comprehensive Documentation**: Detailed README and contributing guidelines
 

@@ -2110,34 +2110,34 @@ after_bundle do
 
     <<~SECTION
 
-    ## Deployment to Render.com
+## Deployment to Render.com
 
-    This app is configured for easy deployment to Render.com.
-    **See `RENDER_DEPLOYMENT.md` for a complete deployment checklist.**
+This app is configured for easy deployment to Render.com.
+**See `RENDER_DEPLOYMENT.md` for a complete deployment checklist.**
 
-    ### Configuration Summary
+### Configuration Summary
 
-    | Setting | Value |
-    |---------|-------|
-    | Tier | #{tier_info} |
-    | Database | #{db_info} |
-    | Background Jobs | #{worker_info} |
-    | Domain | #{domain_info} |
+| Setting | Value |
+|---------|-------|
+| Tier | #{tier_info} |
+| Database | #{db_info} |
+| Background Jobs | #{worker_info} |
+| Domain | #{domain_info} |
 
-    ### Quick Deploy
+### Quick Deploy
 
-    #{quick_deploy_steps.strip}
-    #{render_options[:domain] ? "\n6. Configure DNS records (see `RENDER_DEPLOYMENT.md` for details)" : ""}
+#{quick_deploy_steps.strip}
+#{render_options[:domain] ? "\n6. Configure DNS records (see `RENDER_DEPLOYMENT.md` for details)" : ""}
 
-    ### What's Configured
+### What's Configured
 
-    - **Build script**: `bin/render-build.sh` handles dependencies and assets
-    - **Migrations**: Run via `preDeployCommand` (after build, before start)
-    - #{database_info}
-    - **Health checks**: Rails 8's `/up` endpoint for monitoring
-    - **Environment**: `NODE_ENV=production` for optimized builds
+- **Build script**: `bin/render-build.sh` handles dependencies and assets
+- **Migrations**: Run via `preDeployCommand` (after build, before start)
+- #{database_info}
+- **Health checks**: Rails 8's `/up` endpoint for monitoring
+- **Environment**: `NODE_ENV=production` for optimized builds
 
-    Learn more: [Render Rails Deployment Guide](https://render.com/docs/deploy-rails)
+Learn more: [Render Rails Deployment Guide](https://render.com/docs/deploy-rails)
     SECTION
   else
     ""
@@ -2147,6 +2147,17 @@ after_bundle do
   doc_commands << "- Generate ERD: `bundle exec erd`" if doc_options[:rails_erd]
   doc_commands << "- Annotate models: `bundle exec annotaterb models`"
   doc_commands << "- View database: Visit `/rails_db` in development" if doc_options[:rails_db]
+
+  erd_section = if doc_options[:rails_erd]
+    <<~MARKDOWN
+
+## Entity Relationship Diagram
+
+![Entity Relationship Diagram](erd.png)
+    MARKDOWN
+  else
+    ""
+  end
 
   bundler_audit_command =
     if File.exist?("bin/bundler-audit")
@@ -2177,9 +2188,9 @@ after_bundle do
   database_section = if database_notes.any?
     <<~MARKDOWN
 
-      ## Database Notes
+## Database Notes
 
-      #{database_notes.join("\n")}
+#{database_notes.join("\n")}
     MARKDOWN
   else
     ""
@@ -2230,101 +2241,101 @@ after_bundle do
   # README (overwrite the default Rails README)
   remove_file "README.md"
   create_file "README.md", <<~MARKDOWN
-    # #{app_name.humanize}
+# #{app_name.humanize}
 
-    ## Tooling
+## Tooling
 
-    This app was generated from a Rails application template and includes:
+This app was generated from a Rails application template and includes:
 
-    #{tooling_lines.join("\n")}
+#{tooling_lines.join("\n")}
 
-    ## Requirements
+## Requirements
 
-    #{requirements_lines.join("\n")}
+#{requirements_lines.join("\n")}
 
-    ## Setup
+## Setup
 
-    1. Clone the repository
-    2. Install dependencies:
-       ```bash
-       #{dependency_install_cmds.join("\n")}
-       ```
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   #{dependency_install_cmds.join("\n   ")}
+   ```
 
-    3. Setup database:
-       ```bash
-       bin/rails db:prepare
-       bin/rails db:seed
-       ```
+3. Setup database:
+   ```bash
+   bin/rails db:prepare
+   bin/rails db:seed
+   ```
 
-    4. Copy environment variables:
-       ```bash
-       cp .env.example .env
-       ```
-       Edit `.env` with your configuration
+4. Copy environment variables:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` with your configuration
 
-    ## Development
+## Development
 
-    Start the development server:
-    ```bash
-    #{dev_command}
-    ```
+Start the development server:
+```bash
+#{dev_command}
+```
 
-    ## Testing
+## Testing
 
-    Run the test suite:
-    ```bash
-    bundle exec rspec
-    ```#{testing_section}
+Run the test suite:
+```bash
+bundle exec rspec
+```#{testing_section}
 
-    ## Code Quality
+## Code Quality
 
-    Ruby linting:
-    ```bash
-    bundle exec standardrb
-    bundle exec standardrb --fix
-    ```
+Ruby linting:
+```bash
+bundle exec standardrb
+bundle exec standardrb --fix
+```
 
-    Gemfile ordering:
-    ```bash
-    bundle exec rubocop --only Bundler/OrderedGems Gemfile
-    bundle exec rubocop -A --only Bundler/OrderedGems Gemfile
-    ```
+Gemfile ordering:
+```bash
+bundle exec rubocop --only Bundler/OrderedGems Gemfile
+bundle exec rubocop -A --only Bundler/OrderedGems Gemfile
+```
 
-    HTML+ERB analysis:
-    ```bash
-    bundle exec herb analyze .
-    bundle exec herb parse app/views/path/to/file.html.erb
-    ```#{linting_section}
+HTML+ERB analysis:
+```bash
+bundle exec herb analyze .
+bundle exec herb parse app/views/path/to/file.html.erb
+```#{linting_section}
 
-    Security scanning:
-    ```bash
-    #{security_commands.join("\n")}
-    ```
+Security scanning:
+```bash
+#{security_commands.join("\n")}
+```
 
-    ## Performance & N+1 Prevention
+## Performance & N+1 Prevention
 
-    #{n_plus_one_intro}
+#{n_plus_one_intro}
 
-    ### Bullet (Detection)
-    - Detects N+1 queries and suggests fixes in development and test
-    - Logs to server console and displays in HTML footer
-    #{bullet_unused_eager_loading_line}
-    - View N+1 warnings in:
-      - Browser footer (development only)
-      - Rails server log
-      - Browser console
+### Bullet (Detection)
+- Detects N+1 queries and suggests fixes in development and test
+- Logs to server console and displays in HTML footer
+#{bullet_unused_eager_loading_line}
+- View N+1 warnings in:
+  - Browser footer (development only)
+  - Rails server log
+  - Browser console
 
-    ### Goldiloader (Prevention)
-    #{goldiloader_details}#{rack_profiler_section}
+### Goldiloader (Prevention)
+#{goldiloader_details}#{rack_profiler_section}
 
-    ## Background Jobs
+## Background Jobs
 
-    This app uses Solid Queue (Rails 8 default) for background job processing.#{solid_queue_dev_note}
+This app uses Solid Queue (Rails 8 default) for background job processing.#{solid_queue_dev_note}
 
-    ## Documentation
+## Documentation
 
-    #{doc_commands.join("\n")}
-#{database_section}#{ci_section}#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}#{render_deployment_section}
+#{doc_commands.join("\n")}
+#{erd_section}#{database_section}#{ci_section}#{error_monitoring_section}#{performance_monitoring_section}#{analytics_section}#{render_deployment_section}
   MARKDOWN
 
   # CONTRIBUTING.md

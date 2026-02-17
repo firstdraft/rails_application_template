@@ -1765,6 +1765,42 @@ after_bundle do
   if doc_options[:rails_erd]
     generate("erd:install")
 
+    erd_excludes = %w[
+      ActiveRecord::InternalMetadata
+      ActiveRecord::SchemaMigration
+      ActiveStorage::Attachment
+      ActiveStorage::Blob
+      ActiveStorage::VariantRecord
+      AdminUser
+      ActiveAdmin::Comment
+      primary::SchemaMigration
+      SolidQueue::Job
+      SolidQueue::Pause
+      SolidQueue::Process
+      SolidQueue::ClaimedExecution
+      SolidQueue::BlockedExecution
+      SolidQueue::FailedExecution
+      SolidQueue::ReadyExecution
+      SolidQueue::ScheduledExecution
+      SolidQueue::RecurringTask
+      SolidQueue::RecurringExecution
+      SolidQueue::Semaphore
+      SolidCache::Entry
+      SolidCable::Message
+    ]
+
+    if analytics_options[:ahoy_blazer]
+      erd_excludes += %w[
+        Blazer::Audit
+        Blazer::Query
+        Blazer::Check
+        Blazer::Dashboard
+        Blazer::DashboardQuery
+        Ahoy::Visit
+        Ahoy::Event
+      ]
+    end
+
     create_file ".erdconfig", <<~YAML
       attributes:
         - content
@@ -1782,7 +1818,7 @@ after_bundle do
       sort: true
       warn: false
       title: false
-      exclude: ActiveRecord::InternalMetadata,ActiveRecord::SchemaMigration,ActiveStorage::Attachment,ActiveStorage::Blob,AdminUser,ActiveAdmin::Comment,primary::SchemaMigration
+      exclude: #{erd_excludes.join(",")}
       only: null
       only_recursion_depth: null
       prepend_primary: false

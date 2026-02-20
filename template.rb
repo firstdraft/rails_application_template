@@ -3,7 +3,7 @@
 #   rails new APP_NAME \
 #     --database=postgresql \
 #     --javascript=esbuild \
-#     --css=bootstrap \
+#     --css=bootstrap (or --css=tailwind) \
 #     --skip-test \
 #     --skip-kamal \
 #     --skip-rubocop \

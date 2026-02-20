@@ -8,7 +8,7 @@ A comprehensive Rails application template with modern best practices, testing t
 - PostgreSQL 18+ database
 - RSpec for testing
 - StandardRB for Ruby linting
-- Bootstrap CSS support (with `--css=bootstrap`)
+- CSS framework of your choice (Bootstrap or Tailwind)
 - Esbuild for JavaScript (with `--javascript=esbuild`)
 
 ### Development & Debugging Tools
@@ -67,7 +67,7 @@ A comprehensive Rails application template with modern best practices, testing t
 
 ## Usage
 
-### Basic Usage
+### With Bootstrap
 
 ```bash
 rails new my_app \
@@ -80,11 +80,26 @@ rails new my_app \
   --template=https://raw.githubusercontent.com/firstdraft/rails_application_template/main/template.rb
 ```
 
+### With Tailwind
+
+```bash
+rails new my_app \
+  --database=postgresql \
+  --javascript=esbuild \
+  --css=tailwind \
+  --skip-test \
+  --skip-kamal \
+  --skip-rubocop \
+  --template=https://raw.githubusercontent.com/firstdraft/rails_application_template/main/template.rb
+```
+
+Tailwind customization is handled through the `tailwind.config.js` file that Rails generates automatically. See [Tailwind's configuration docs](https://tailwindcss.com/docs/configuration) for details.
+
 ### Recommended Flags
 
 - `--database=postgresql` - Use PostgreSQL (required)
 - `--javascript=esbuild` - Fast JavaScript bundling
-- `--css=bootstrap` - Bootstrap CSS framework
+- `--css=bootstrap` or `--css=tailwind` - CSS framework of your choice
 - `--skip-test` - Skip Minitest (we use RSpec)
 - `--skip-rubocop` - Skip default RuboCop (we use StandardRB)
 - `--skip-kamal` - Skip Kamal deployment (unless you need it)
@@ -103,7 +118,7 @@ If you choose custom configuration, you'll be prompted for:
 - **Analytics**: Ahoy + Blazer for tracking and dashboards
 - **Documentation Tools**: Rails ERD, rails_db browser
 - **Error Monitoring**: Rollbar, Honeybadger, or None
-- **Frontend Tools**: Bootstrap overrides, full linting stack (Prettier, ESLint, Stylelint)
+- **Frontend Tools**: Bootstrap overrides (only when using `--css=bootstrap`), full linting stack (Prettier, ESLint, Stylelint)
 - **Database Configuration**:
   - UUID primary keys vs. standard integers (choose UUIDv7 or UUIDv4; default is UUIDv7)
   - Rails 8 multi-database setup (separate databases for cache/queue/cable) vs. single database
